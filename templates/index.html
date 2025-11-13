@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>语音助手</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1e40af',
+                        secondary: '#3b82f6',
+                        accent: '#60a5fa',
+                        light: '#dbeafe',
+                        dark: '#1e3a8a'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'wave': 'wave 1.5s infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Project CSS (moved out of template) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <!-- Remove server-side wake_word injection; frontend controls wake word via localStorage -->
+    <div id="app" class="container mx-auto px-4 py-8 max-w-3xl">
+        <!-- 头部 -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-primary mb-2">语音助手</h1>
+            <p class="text-gray-600">使用语音指令与我交互，只需说"<span id="current-wake-word">你好助手</span>"唤醒我</p>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="bg-white rounded-2xl shadow-lg p-6 mb-8">
+            <!-- 唤醒状态指示器 -->
+            <div id="wakeup-status" class="flex items-center justify-center mb-6">
+                <div id="status-indicator" class="w-4 h-4 rounded-full bg-gray-300 mr-2"></div>
+                <span id="status-text" class="text-gray-500">等待唤醒...</span>
+            </div>
+
+            <!-- 语音波形动画 -->
+            <div id="voice-wave-container" class="flex items-center justify-center h-32 mb-8 bg-gray-50 rounded-xl p-4">
+                <div class="flex items-center h-16">
+                    <!-- 波型条将通过JS动态生成 -->
+                </div>
+            </div>
+
+            <!-- 识别结果区域 -->
+            <div class="mb-6">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">识别结果</h2>
+                <div id="recognition-result" class="min-h-[80px] p-4 bg-gray-50 rounded-lg text-gray-800">
+                    <p class="text-gray-400 italic">请唤醒助手并开始说话...</p>
+                </div>
+            </div>
+
+            <!-- 反馈结果区域 -->
+            <div class="mb-6">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">助手反馈</h2>
+                <div id="assistant-response" class="min-h-[80px] p-4 bg-blue-50 rounded-lg text-gray-800">
+                    <p class="text-gray-400 italic">助手将在这里回复您的问题...</p>
+                </div>
+            </div>
+
+            <!-- 控制按钮 -->
+            <div class="flex justify-center space-x-4">
+                <button id="manual-wakeup-btn" class="px-6 py-3 bg-primary hover:bg-dark text-white rounded-lg shadow transition-all-300 flex items-center">
+                    <i class="fa fa-microphone mr-2"></i>
+                    <span>手动唤醒</span>
+                </button>
+                <button id="clear-btn" class="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg shadow transition-all-300 flex items-center">
+                    <i class="fa fa-trash mr-2"></i>
+                    <span>清空记录</span>
+                </button>
+            </div>
+        </main>
+
+        <!-- 历史记录 -->
+        <div class="bg-white rounded-2xl shadow-lg p-6">
+            <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center">
+                <i class="fa fa-history mr-2"></i>
+                交互历史
+            </h2>
+            <div id="history-container" class="space-y-4 max-h-[300px] overflow-y-auto">
+                <p class="text-gray-400 italic text-center">暂无历史记录</p>
+            </div>
+        </div>
+
+        <!-- 底部信息 -->
+        <footer class="mt-8 text-center text-gray-500 text-sm">
+            <p>© 2025 语音助手 | 基于 Web Speech API 构建</p>
+        </footer>
+    </div>
+
+    <!-- Settings toggle button -->
+    <button id="settings-toggle" class="fixed left-4 bottom-6 bg-primary text-white px-4 py-2 rounded shadow-lg z-40">
+        <i class="fa fa-cog mr-2"></i>设置
+    </button>
+
+    <!-- Settings sidebar -->
+    <aside id="settings-sidebar" class="fixed right-0 top-0 h-full w-80 bg-white shadow-lg transform translate-x-full transition-transform z-50">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">设置</h3>
+                <button id="settings-close" class="text-gray-500">关闭</button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label for="wake-word-input" class="block text-sm font-medium text-gray-700 mb-1">唤醒词</label>
+                    <input id="wake-word-input" type="text" class="w-full px-3 py-2 border rounded" placeholder="输入唤醒词，例如：你好助手">
+                </div>
+
+                <div>
+                    <label for="wake-timeout-input" class="block text-sm font-medium text-gray-700 mb-1">超时时间（秒）</label>
+                    <input id="wake-timeout-input" type="number" min="1" max="300" class="w-full px-3 py-2 border rounded" value="30">
+                    <p class="text-xs text-gray-500 mt-1">助手唤醒后若长时间未收到指令或未回复，将自动回到未唤醒状态。</p>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <input id="quick-wake-toggle" type="checkbox" class="h-4 w-4" />
+                    <label for="quick-wake-toggle" class="text-sm text-gray-700">启用快速唤醒模式（以唤醒词开头的语句将直接作为指令）</label>
+                </div>
+
+                <!-- Manual debug mode toggle -->
+                <div class="flex items-center space-x-2">
+                    <input id="debug-manual-toggle" type="checkbox" class="h-4 w-4" />
+                    <label for="debug-manual-toggle" class="text-sm text-gray-700">启用手动调试输入（显示输入框，可直接发送指令）</label>
+                </div>
+
+                <!-- Manual input area (hidden by default, shown when debug mode enabled) -->
+                <div id="manual-debug-area" class="hidden">
+                    <label for="manual-command-input" class="block text-sm font-medium text-gray-700 mb-1">手动输入指令</label>
+                    <div class="flex space-x-2">
+                        <input id="manual-command-input" type="text" class="flex-1 px-3 py-2 border rounded" placeholder="在此输入要测试的指令">
+                        <button id="manual-command-send" class="px-3 py-2 bg-primary text-white rounded">发送</button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">开启后可在页面内直接输入并发送指令（会显示在历史记录中）。</p>
+
+                <div class="pt-2">
+                    <button id="wake-word-save" class="px-4 py-2 bg-primary text-white rounded">保存设置</button>
+                    <span id="wake-word-message" class="text-sm text-green-600 ml-2 hidden">已保存</span>
+                </div>
+            </div>
+        </div>
+        </div>
+    </aside>
+
+    <!-- Project JS (moved out of template) -->
+    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+</body>
+</html>

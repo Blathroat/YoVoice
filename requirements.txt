@@ -1,0 +1,4 @@
+# Flask==2.2.5
+# Optional for SQL usage if you plan to enable DB later
+# SQLAlchemy==1.4.49
+
