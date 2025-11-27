@@ -49,7 +49,7 @@ def process_voice():
     if not text:
         resp = "抱歉，我没有收到任何内容。"
     elif '天气' in text:
-        resp = '今天天气晴朗，气温25°C，适合户外活动。'
+        resp = '今天天气晴朗，气温19°C，适合户外活动。'
     elif '时间' in text:
         from datetime import datetime
         now = datetime.now()
