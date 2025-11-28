@@ -632,3 +632,212 @@ function clearAll() {
     if (assistantResponse) assistantResponse.innerHTML = '<p class="text-gray-400 italic">助手将在这里回复您的问题...</p>';
     if (historyContainer) historyContainer.innerHTML = '<p class="text-gray-400 italic text-center">暂无历史记录</p>';
 }
+let speechSynthesis = window.speechSynthesis;
+let currentSpeechUtterance = null;
+let isStreaming = false;
+let streamBuffer = '';
+
+function initSpeechSynthesis() {
+    if (!('speechSynthesis' in window)) {
+        console.warn('浏览器不支持语音合成');
+        return;
+    }
+}
+
+function speakText(text) {
+    if (!text || !speechSynthesis) return;
+
+    if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+    }
+
+    currentSpeechUtterance = new SpeechSynthesisUtterance(text);
+    currentSpeechUtterance.lang = 'zh-CN';
+    currentSpeechUtterance.rate = 0.9;
+    currentSpeechUtterance.pitch = 1.0;
+
+    currentSpeechUtterance.onstart = () => {
+        updateVoiceStatus('语音播放中...', 'active');
+    };
+
+    currentSpeechUtterance.onend = () => {
+        updateVoiceStatus('语音播放完成', 'idle');
+    };
+
+    currentSpeechUtterance.onerror = (event) => {
+        console.error('语音合成错误:', event);
+        updateVoiceStatus('语音播放错误', 'error');
+    };
+
+    speechSynthesis.speak(currentSpeechUtterance);
+}
+
+function updateVoiceStatus(text, status) {
+    const statusEl = document.getElementById('voice-status');
+    if (!statusEl) return;
+
+    statusEl.textContent = text;
+    statusEl.className = 'voice-status';
+
+    switch (status) {
+        case 'active':
+            statusEl.classList.add('status-active');
+            break;
+        case 'error':
+            statusEl.classList.add('status-error');
+            break;
+        default:
+            statusEl.classList.add('status-idle');
+    }
+}
+
+function showDiceAnimation(diceType, result) {
+    const diceContainer = document.getElementById('dice-animation-container');
+    if (!diceContainer) return;
+
+    diceContainer.innerHTML = '';
+    diceContainer.style.display = 'block';
+
+    const diceElement = document.createElement('div');
+    diceElement.className = `dice dice-${diceType}`;
+    diceElement.textContent = result;
+
+    diceContainer.appendChild(diceElement);
+
+    setTimeout(() => {
+        diceElement.classList.add('dice-roll');
+    }, 100);
+
+    setTimeout(() => {
+        diceContainer.style.display = 'none';
+    }, 3000);
+}
+
+function updateScoreDisplay(scores) {
+    const scoreContainer = document.getElementById('score-display');
+    if (!scoreContainer) return;
+
+    scoreContainer.innerHTML = '';
+
+    Object.entries(scores).forEach(([name, score]) => {
+        const scoreElement = document.createElement('div');
+        scoreElement.className = 'score-item';
+        scoreElement.innerHTML = `
+            <span class="score-name">${name}</span>
+            <span class="score-value">${score}</span>
+        `;
+        scoreContainer.appendChild(scoreElement);
+    });
+}
+
+async function processCommand(command) {
+    if (!command) return;
+    addToHistory(command, 'user');
+    updateAssistantResponse('正在处理您的请求...', false);
+
+    try {
+        const response = await fetch('/process-voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: command })
+        });
+
+        if (!response.ok) throw new Error('网络请求失败');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = '';
+        streamBuffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+
+                        if (data.chunk) {
+                            streamBuffer += data.chunk;
+                            updateAssistantResponse(streamBuffer + '▊', true);
+                        }
+
+                        if (data.final) {
+                            const finalData = data.final;
+                            fullResponse = finalData.reply || '';
+
+                            updateAssistantResponse(fullResponse, false);
+                            addToHistory(fullResponse, 'assistant');
+
+                            speakText(fullResponse);
+
+                            if (finalData.activity === 'roll' && finalData.dice_type) {
+                                showDiceAnimation(finalData.dice_type, finalData.dice_result);
+                            }
+
+                            if (finalData.activity === 'scoreboard') {
+                                const gameStateResponse = await fetch('/get-game-state');
+                                const gameState = await gameStateResponse.json();
+                                updateScoreDisplay(gameState.scores);
+                            }
+
+                            scheduleResetAfterReply();
+                        }
+                    } catch (e) {
+                        console.warn('解析流数据失败:', e);
+                    }
+                }
+            }
+        }
+
+    } catch (error) {
+        console.error('API请求错误:', error);
+        const fallback = await simulateApiCall(command);
+        updateAssistantResponse('抱歉，处理您的请求时出错。' + fallback, false);
+        speakText('抱歉，处理您的请求时出错。');
+        scheduleResetAfterReply();
+    }
+}
+
+function simulateApiCall(command) {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            if (command.includes('天气')) {
+                resolve('今天天气晴朗，气温25°C，适合户外活动。');
+            } else if (command.includes('时间')) {
+                const now = new Date();
+                resolve(`现在是${now.getHours()}点${now.getMinutes()}分。`);
+            } else if (command.includes('你好') || command.includes('您好')) {
+                resolve('您好！有什么我可以帮您的吗？');
+            } else if (command.includes('再见') || command.includes('拜拜')) {
+                resolve('再见！如果您还有其他问题，随时可以唤醒我。');
+            } else {
+                resolve(`您说的是："${command}"。这是一个模拟回复，实际应用中会根据您的指令调用相应的服务。`);
+            }
+        }, 1000);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initSpeechSynthesis();
+
+    const voiceControlBtn = document.getElementById('voice-control-btn');
+    if (voiceControlBtn) {
+        voiceControlBtn.addEventListener('click', function() {
+            if (speechSynthesis.speaking) {
+                speechSynthesis.cancel();
+                this.textContent = '🔊 播放语音';
+            } else {
+                const responseText = document.getElementById('assistant-response').textContent;
+                if (responseText && !responseText.includes('助手将在这里回复')) {
+                    speakText(responseText);
+                    this.textContent = '⏹️ 停止语音';
+                }
+            }
+        });
+    }
+});
