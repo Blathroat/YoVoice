@@ -35,4 +35,147 @@
 
 /* Make sure history container scrolls nicely */
 #history-container{ scrollbar-width: thin; }
+.dice-animation-container {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    display: none;
+}
 
+.dice {
+    width: 100px;
+    height: 100px;
+    background: white;
+    border: 3px solid #333;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: bold;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    transition: all 0.5s ease-out;
+}
+
+.dice-roll {
+    animation: diceRoll 1.5s ease-out;
+}
+
+@keyframes diceRoll {
+    0% {
+        transform: rotate(0deg) scale(0.5);
+        opacity: 0;
+    }
+
+    50% {
+        transform: rotate(180deg) scale(1.2);
+        opacity: 1;
+    }
+
+    100% {
+        transform: rotate(360deg) scale(1);
+        opacity: 1;
+    }
+}
+
+.dice-4 {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+}
+
+.dice-6 {
+    background: linear-gradient(135deg, #4834d4, #686de0);
+}
+
+.dice-8 {
+    background: linear-gradient(135deg, #00d2d3, #54a0ff);
+}
+
+.dice-12 {
+    background: linear-gradient(135deg, #f368e0, #ff9ff3);
+}
+
+.dice-20 {
+    background: linear-gradient(135deg, #fdcb6e, #e17055);
+}
+
+.score-display {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 10px 0;
+}
+
+.score-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.score-name {
+    font-weight: 600;
+    color: #495057;
+}
+
+.score-value {
+    font-weight: bold;
+    color: #e74c3c;
+}
+
+.voice-status {
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin: 10px 0;
+    font-size: 0.9rem;
+}
+
+.status-active {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-idle {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+.status-error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.voice-controls {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+}
+
+.voice-control-btn {
+    padding: 8px 16px;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+    .voice-control-btn:hover {
+        background: #2980b9;
+    }
+
+.streaming-cursor {
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 50% {
+        opacity: 1;
+    }
+
+    51%, 100% {
+        opacity: 0;
+    }
+}

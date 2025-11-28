@@ -98,7 +98,28 @@
                 <p class="text-gray-400 italic text-center">暂无历史记录</p>
             </div>
         </div>
+<!-- 在main内容区添加计分板显示 -->
+        <div class="score-display-container mb-6">
+            <h2 class="text-lg font-semibold text-gray-700 mb-2">游戏状态</h2>
+        <div id="score-display" class="score-display">
+                <p class="text-gray-400 italic">暂无游戏数据</p >
+            </div>
+        </div>
 
+<!-- 添加骰子动画容器 -->
+        <div id="dice-animation-container" class="dice-animation-container"></div>
+
+<!-- 在控制按钮区域添加语音控制 -->
+        <div class="voice-controls">
+             <button id="voice-control-btn" class="voice-control-btn">
+        🔊 播放语音
+             </button>
+        </div>
+
+<!-- 添加语音状态显示 -->
+        <div id="voice-status" class="voice-status status-idle">
+    语音状态：等待中
+        </div>
         <!-- 底部信息 -->
         <footer class="mt-8 text-center text-gray-500 text-sm">
             <p>© 2025 语音助手 | 基于 Web Speech API 构建</p>
