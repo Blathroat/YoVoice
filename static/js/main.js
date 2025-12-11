@@ -17,6 +17,7 @@ let wakeTimeout = 5; // seconds
 let quickWake = false;
 let wakeTimer = null;
 let manualDebugEnabled = false; // new: whether manual debug input is visible
+let isProcessingManualCommand = false; // new: whether we're processing a manual command
 
 // DOM元素 (will be assigned after DOM is ready)
 let statusIndicator;
@@ -130,7 +131,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             // wake assistant for visibility and then process
             wakeUpAssistant();
-            processCommand(cmd);
+            isProcessingManualCommand = true;
+            processCommand(cmd).finally(() => {
+                isProcessingManualCommand = false;
+            });
             manualCommandInput.value = '';
         });
 
@@ -242,9 +246,10 @@ function initVoiceRecognition() {
         isListening = false;
         stopAudioVisualization();
         // 确保持续监听（无论当前是否唤醒），以便唤醒词仍可被检测
+        // 但如果正在处理手动命令，则不自动重启识别
         setTimeout(() => {
             try {
-                if (!isListening) startListening();
+                if (!isListening && !isProcessingManualCommand) startListening();
             } catch (e) {
                 console.warn('重启识别失败(onend):', e);
             }
@@ -719,15 +724,33 @@ function updateScoreDisplay(scores) {
 
     scoreContainer.innerHTML = '';
 
-    Object.entries(scores).forEach(([name, score]) => {
-        const scoreElement = document.createElement('div');
-        scoreElement.className = 'score-item';
-        scoreElement.innerHTML = `
-            <span class="score-name">${name}</span>
-            <span class="score-value">${score}</span>
-        `;
-        scoreContainer.appendChild(scoreElement);
-    });
+    // 检查scores是否为数组（新格式）
+    if (Array.isArray(scores)) {
+        scores.forEach(item => {
+            const name = item.name;
+            const score = item.score;
+            if (name && score !== undefined) {
+                const scoreElement = document.createElement('div');
+                scoreElement.className = 'score-item';
+                scoreElement.innerHTML = `
+                    <span class="score-name">${name}</span>
+                    <span class="score-value">${score}</span>
+                `;
+                scoreContainer.appendChild(scoreElement);
+            }
+        });
+    } else if (typeof scores === 'object' && scores !== null) {
+        // 兼容旧的对象格式
+        Object.entries(scores).forEach(([name, score]) => {
+            const scoreElement = document.createElement('div');
+            scoreElement.className = 'score-item';
+            scoreElement.innerHTML = `
+                <span class="score-name">${name}</span>
+                <span class="score-value">${score}</span>
+            `;
+            scoreContainer.appendChild(scoreElement);
+        });
+    }
 }
 
 async function processCommand(command) {
