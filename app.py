@@ -4,7 +4,6 @@ import json
 import random
 from typing import Any, Dict
 import dashscope
-import base64
 
 # 读取配置文件
 with open('config.json', 'r', encoding='utf-8') as f:
@@ -94,7 +93,7 @@ def set_score(name, score):
 
 
 @app.route('/')
-def hello_world():
+def index():
     return render_template('index.html')
 
 

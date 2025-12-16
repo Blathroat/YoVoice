@@ -1,5 +1,5 @@
-// Frontend voice handling, audio visualization and backend integration
-// Moved from template and adapted to call Flask endpoint /process-voice
+// 前端语音处理、音频可视化和后端集成
+// 从模板迁移并适配调用Flask端点 /process-voice
 
 // 全局变量
 let recognition;
@@ -8,45 +8,37 @@ let isListening = false;
 let analyser;
 let microphone;
 let animationId;
-let backendApiUrl = "/process-voice"; // local Flask endpoint
+let backendApiUrl = "/process-voice"; // 本地Flask端点
 
-// Global settings (will be initialized on DOMContentLoaded)
+// 全局设置（将在DOM加载完成后初始化）
 let wakeWord = '你好助手';
-let wakeTimeout = 5; // seconds
+let wakeTimeout = 5; // 秒
 let quickWake = false;
 let wakeTimer = null;
-let manualDebugEnabled = false; // new: whether manual debug input is visible
-let isProcessingManualCommand = false; // new: whether we're processing a manual command
-// TTS settings - constants extracted from model documentation
-// Will be populated from API
+let manualDebugEnabled = false; // 新：是否显示手动调试输入
+let isProcessingManualCommand = false; // 新：是否正在处理手动命令
+// TTS设置 - 从模型文档中提取的常量
+// 将从API获取
 let SUPPORTED_LANGUAGES = [];
 
-// Will be populated from API
+// 将从API获取
 let SUPPORTED_VOICES = [];
 
-// Configuration object to store settings from API
+// 配置对象，用于存储来自API的设置
 let appConfig = null;
 
-// TTS settings
-let ttsEnabled = false; // whether qwen3-tts-flash is enabled
-let ttsLanguage = 'Chinese'; // TTS language type
-let ttsVoice = 'Cherry'; // TTS voice
+// TTS设置
+let ttsEnabled = false; // 是否启用qwen3-tts-flash
+let ttsLanguage = 'Chinese'; // TTS语言类型
+let ttsVoice = 'Cherry'; // TTS音色
 
-// Audio streaming variables
-let audioContext = null; // Global audio context for both visualization and TTS
-let audioQueue = [];
-let isPlaying = false;
-let isStreaming = false; // Track if qwen3-tts-flash is streaming
-let currentAudioSource = null;
-let audioBuffer = [];
-let audioChunks = []; // Store audio chunks for qwen3-tts-flash
-let audioSources = []; // Track all audio sources for stopping
-let audioBlobParts = []; // 用于存储音频块，合并后播放
+// 音频变量
+let audioContext = null; // 用于可视化和TTS的全局音频上下文
 let isAudioPlaying = false; // 标记是否正在播放合并后的音频
-let currentAudioElement = null; // Track the current Audio element for immediate stop
+let currentAudioElement = null; // 跟踪当前音频元素，用于立即停止
 let isUserStoppingAudio = false; // 标记是否是用户主动停止音频
 
-// DOM元素 (will be assigned after DOM is ready)
+// DOM元素（将在DOM准备就绪后分配）
 let statusIndicator;
 let statusText;
 let voiceWaveContainer;
@@ -56,21 +48,21 @@ let manualWakeupBtn;
 let clearBtn;
 let historyContainer;
 
-// Function to fetch configuration from API
+// 从API获取配置的函数
 async function fetchConfig() {
     try {
-        console.log('Fetching configuration from API...');
+        console.log('从API获取配置...');
         const response = await fetch('/config');
         if (!response.ok) {
-            throw new Error(`Failed to fetch config: ${response.status}`);
+            throw new Error(`获取配置失败: ${response.status}`);
         }
         appConfig = await response.json();
         
-        // Populate supported languages and voices from API
+        // 从API填充支持的语言和音色
         SUPPORTED_LANGUAGES = appConfig.SUPPORTED_LANGUAGES || [];
         SUPPORTED_VOICES = appConfig.SUPPORTED_VOICES || [];
         
-        // Update default settings from API
+        // 从API更新默认设置
         if (appConfig.DEFAULT_WAKE_WORD) {
             wakeWord = appConfig.DEFAULT_WAKE_WORD;
         }
@@ -78,7 +70,7 @@ async function fetchConfig() {
             wakeTimeout = appConfig.DEFAULT_WAKE_TIMEOUT;
         }
         
-        console.log('Configuration fetched successfully:', {
+        console.log('配置获取成功:', {
             languages: SUPPORTED_LANGUAGES.length,
             voices: SUPPORTED_VOICES.length,
             defaultWakeWord: wakeWord,
@@ -87,19 +79,19 @@ async function fetchConfig() {
         
         return true;
     } catch (error) {
-        console.error('Error fetching configuration:', error);
-        // Use default values if API fails
-        console.log('Using default configuration values');
+        console.error('获取配置错误:', error);
+        // 如果API失败，使用默认值
+        console.log('使用默认配置值');
         return false;
     }
 }
 
-// Single DOM-ready initialization
-document.addEventListener('DOMContentLoaded', async () => {
-    // Fetch configuration from API first
+// 单个DOM加载完成初始化
+window.addEventListener('DOMContentLoaded', async () => {
+    // 首先从API获取配置
     await fetchConfig();
     
-    // assign DOM elements after DOMContentLoaded to avoid nulls
+    // 分配DOM元素，避免null引用
     statusIndicator = document.getElementById('status-indicator');
     statusText = document.getElementById('status-text');
     voiceWaveContainer = document.querySelector('#voice-wave-container .flex');
@@ -109,7 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearBtn = document.getElementById('clear-btn');
     historyContainer = document.getElementById('history-container');
 
-    // settings UI elements
+    // 设置UI元素
     const settingsToggle = document.getElementById('settings-toggle');
     const settingsSidebar = document.getElementById('settings-sidebar');
     const settingsClose = document.getElementById('settings-close');
@@ -121,19 +113,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     const currentWakeWordDisplay = document.getElementById('current-wake-word');
     const appEl = document.getElementById('app');
 
-    // manual debug elements
+    // 手动调试元素
     const debugManualToggle = document.getElementById('debug-manual-toggle');
     const manualDebugArea = document.getElementById('manual-debug-area');
     const manualCommandInput = document.getElementById('manual-command-input');
     const manualCommandSend = document.getElementById('manual-command-send');
 
-    // load persisted settings or fallback to dataset or defaults
+    // 加载持久化设置或回退到数据集或默认值
     try {
         const lsWake = localStorage.getItem('yv_wake_word');
         const lsTimeout = localStorage.getItem('yv_wake_timeout');
         const lsQuick = localStorage.getItem('yv_quick_wake');
         const lsManualDebug = localStorage.getItem('yv_manual_debug');
-        // TTS settings
+        // TTS设置
         const lsTtsEnabled = localStorage.getItem('yv_tts_enabled');
         const lsTtsLanguage = localStorage.getItem('yv_tts_language');
         const lsTtsVoice = localStorage.getItem('yv_tts_voice');
@@ -147,10 +139,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (lsTtsLanguage) ttsLanguage = lsTtsLanguage;
         if (lsTtsVoice) ttsVoice = lsTtsVoice;
     } catch (e) {
-        console.warn('localStorage unavailable:', e);
+        console.warn('localStorage不可用:', e);
     }
 
-    // populate settings UI
+    // 填充设置UI
     if (wakeWordInput) wakeWordInput.value = wakeWord;
     if (wakeTimeoutInput) wakeTimeoutInput.value = wakeTimeout;
     if (quickWakeToggle) quickWakeToggle.checked = quickWake;
@@ -161,12 +153,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         else manualDebugArea.classList.add('hidden');
     }
     
-    // TTS settings UI
+    // TTS设置UI
     const ttsEnabledToggle = document.getElementById('tts-enabled-toggle');
     const ttsLanguageSelect = document.getElementById('tts-language-select');
     const ttsVoiceSelect = document.getElementById('tts-voice-select');
     
-    // Populate language options dynamically from SUPPORTED_LANGUAGES constant
+    // 从SUPPORTED_LANGUAGES常量动态填充语言选项
     if (ttsLanguageSelect) {
         ttsLanguageSelect.innerHTML = '';
         SUPPORTED_LANGUAGES.forEach(lang => {
@@ -175,11 +167,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             option.textContent = lang.label;
             ttsLanguageSelect.appendChild(option);
         });
-        // Set current value
+        // 设置当前值
         ttsLanguageSelect.value = ttsLanguage;
     }
     
-    // Populate voice options dynamically from SUPPORTED_VOICES constant
+    // 从SUPPORTED_VOICES常量动态填充音色选项
     if (ttsVoiceSelect) {
         ttsVoiceSelect.innerHTML = '';
         SUPPORTED_VOICES.forEach(voice => {
@@ -188,18 +180,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             option.textContent = `${voice.name} - ${voice.description}`;
             ttsVoiceSelect.appendChild(option);
         });
-        // Set current value
+        // 设置当前值
         ttsVoiceSelect.value = ttsVoice;
     }
     
     if (ttsEnabledToggle) ttsEnabledToggle.checked = ttsEnabled;
 
-    // ensure sidebar initial transform is set if not defined
+    // 确保侧边栏初始transform已设置
     if (settingsSidebar && !settingsSidebar.style.transform) {
         settingsSidebar.style.transform = 'translateX(100%)';
     }
 
-    // settings open/close handlers - use style.transform to avoid Tailwind class mismatch
+    // 设置打开/关闭处理程序 - 使用style.transform避免Tailwind类不匹配
     if (settingsToggle && settingsSidebar) {
         settingsToggle.addEventListener('click', () => {
             settingsSidebar.style.transform = 'translateX(0)';
@@ -211,7 +203,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // manual debug toggle handler
+    // 手动调试切换处理程序
     if (debugManualToggle && manualDebugArea) {
         debugManualToggle.addEventListener('change', () => {
             manualDebugEnabled = !!debugManualToggle.checked;
@@ -223,22 +215,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 localStorage.setItem('yv_manual_debug', String(manualDebugEnabled));
             } catch (e) {
-                console.warn('localStorage unavailable:', e);
+                console.warn('localStorage不可用:', e);
             }
         });
     }
 
-    // manual send handler
+    // 手动发送处理程序
     if (manualCommandSend && manualCommandInput) {
         manualCommandSend.addEventListener('click', () => {
             const raw = (manualCommandInput.value || '').trim();
             const cmd = sanitizeCommand(raw);
             if (!cmd) {
-                // show small feedback
+                // 显示小提示
                 updateRecognitionResult('请输入有效的指令再发送。', false);
                 return;
             }
-            // wake assistant for visibility and then process
+            // 唤醒助手以便可见，然后处理
             wakeUpAssistant();
             isProcessingManualCommand = true;
             processCommand(cmd).finally(() => {
@@ -247,7 +239,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             manualCommandInput.value = '';
         });
 
-        // also allow Enter key to send
+        // 允许Enter键发送
         manualCommandInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -256,7 +248,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // save settings
+    // 保存设置
     if (wakeWordSave) {
         wakeWordSave.addEventListener('click', () => {
             const newWake = (wakeWordInput && wakeWordInput.value.trim()) || wakeWord;
@@ -264,7 +256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const newQuick = !!(quickWakeToggle && quickWakeToggle.checked);
             const newManualDebug = !!(debugManualToggle && debugManualToggle.checked);
             
-            // TTS settings
+            // TTS设置
             const ttsEnabledToggle = document.getElementById('tts-enabled-toggle');
             const ttsLanguageSelect = document.getElementById('tts-language-select');
             const ttsVoiceSelect = document.getElementById('tts-voice-select');
@@ -277,28 +269,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             wakeTimeout = newTimeout;
             quickWake = newQuick;
             manualDebugEnabled = newManualDebug;
-            // Update TTS settings
+            // 更新TTS设置
             ttsEnabled = newTtsEnabled;
             ttsLanguage = newTtsLanguage;
             ttsVoice = newTtsVoice;
             
             if (currentWakeWordDisplay) currentWakeWordDisplay.textContent = wakeWord;
 
-            // persist
+            // 持久化
             try {
                 localStorage.setItem('yv_wake_word', wakeWord);
                 localStorage.setItem('yv_wake_timeout', String(wakeTimeout));
                 localStorage.setItem('yv_quick_wake', String(quickWake));
                 localStorage.setItem('yv_manual_debug', String(manualDebugEnabled));
-                // Persist TTS settings
+                // 持久化TTS设置
                 localStorage.setItem('yv_tts_enabled', String(ttsEnabled));
                 localStorage.setItem('yv_tts_language', ttsLanguage);
                 localStorage.setItem('yv_tts_voice', ttsVoice);
             } catch (e) {
-                console.warn('localStorage unavailable:', e);
+                console.warn('localStorage不可用:', e);
             }
 
-            // feedback
+            // 反馈
             if (wakeWordMessage) {
                 wakeWordMessage.classList.remove('hidden');
                 wakeWordMessage.textContent = '已保存';
@@ -495,13 +487,13 @@ function setupEventListeners() {
         clearBtn.addEventListener('click', clearAll);
     }
     
-    // Voice control button setup
+    // 语音控制按钮设置
     const voiceControlBtn = document.getElementById('voice-control-btn');
     if (voiceControlBtn) {
         voiceControlBtn.addEventListener('click', function() {
-            // Check if either native speech or streaming or audio is active
-            if (speechSynthesis.speaking || isStreaming || isAudioPlaying || audioSources.length > 0) {
-                // Stop all speech synthesis (native and streaming)
+            // 检查是否有活动的语音合成
+            if (speechSynthesis.speaking || isAudioPlaying) {
+                // 停止所有语音合成（原生和非流式）
                 stopAllSpeech();
                 this.textContent = '🔊 播放语音';
             } else {
@@ -545,22 +537,22 @@ function stopListening() {
     }
 }
 
-// Utility: remove surrounding punctuation and whitespace from candidate commands
+// 工具函数：从候选命令中移除周围的标点和空白
 function sanitizeCommand(text) {
     if (!text) return '';
-    // Remove surrounding whitespace and common punctuation (English + Chinese)
+    // 移除周围的空白和常见标点（英文 + 中文）
     let result = text.replace(/^[\s\.\,\!\?\;\:\-\u2014\u3000\u2014\uff0c\u3002\uff01\uff1f\u3001\uff1b\uff1a\-|"'\u201c\u201d\u2018\u2019]+|[\s\.\,\!\?\;\:\-\u2014\u3000\u2014\uff0c\u3002\uff01\uff1f\u3001\uff1b\uff1a\-|"'\u201c\u201d\u2018\u2019]+$/g, '').trim();
-    // If the remaining string contains no letters or digits, treat as empty (prevents single punctuation like '.' being used)
+    // 如果剩余字符串不包含字母或数字，则视为空（防止使用单个标点符号如'.'）
     try {
         if (!/[\p{L}\p{N}]/u.test(result)) return '';
     } catch (e) {
-        // In case the environment doesn't support Unicode property escapes, fall back to a basic test
+        // 如果环境不支持Unicode属性转义，则回退到基本测试
         if (!/[A-Za-z0-9\u4e00-\u9fa5]/.test(result)) return '';
     }
     return result;
 }
 
-// Modified handleFinalTranscript to support quick-wake and ignore punctuation-only remainders
+// 处理最终转录结果，支持快速唤醒和忽略仅标点符号的余数
 function handleFinalTranscript(transcript) {
     transcript = transcript.trim();
     if (!transcript) return;
@@ -568,7 +560,7 @@ function handleFinalTranscript(transcript) {
     const lowerTranscript = transcript.toLowerCase();
     const lowerWake = wakeWord.toLowerCase();
 
-    // Quick-wake: if enabled and the sentence starts with wake word, treat remainder as command (if meaningful)
+    // 快速唤醒：如果启用且句子以唤醒词开头，则将余数视为命令（如果有意义）
     if (!isWakeUp && quickWake && lowerTranscript.startsWith(lowerWake)) {
         let command = transcript.substring(lowerWake.length).trim();
         command = sanitizeCommand(command);
@@ -579,7 +571,7 @@ function handleFinalTranscript(transcript) {
         return;
     }
 
-    // If not quick-wake: normal wake word detection anywhere in sentence
+    // 如果不是快速唤醒：在句子中任何位置进行正常唤醒词检测
     if (!isWakeUp && !quickWake) {
         const idxFound = lowerTranscript.indexOf(lowerWake);
         if (idxFound !== -1) {
@@ -590,12 +582,12 @@ function handleFinalTranscript(transcript) {
             if (remainder) {
                 processCommand(remainder);
             }
-            // If remainder is empty we just stay awake and wait for next user speech
+            // 如果余数为空，我们只是保持唤醒状态并等待下一次用户语音
             return;
         }
     }
 
-    // If already awakened, treat all final transcripts as commands
+    // 如果已经唤醒，将所有最终转录结果视为命令
     if (isWakeUp) {
         const cmd = sanitizeCommand(transcript);
         if (cmd) {
@@ -604,21 +596,21 @@ function handleFinalTranscript(transcript) {
     }
 }
 
-// Update wakeUpAssistant/start/reset logic to include timeout handling
+// 唤醒助手
 function wakeUpAssistant() {
     isWakeUp = true;
     updateStatus('已唤醒，正在聆听...', 'active');
     updateRecognitionResult('助手已唤醒，请说出您的指令...', false);
     updateAssistantResponse('您好，我能帮您做什么？', false);
     startAudioVisualization();
-    // update UI button
+    // 更新UI按钮
     if (manualWakeupBtn) {
         manualWakeupBtn.innerHTML = '<i class="fa fa-power-off mr-2"></i><span>关闭助手</span>';
         manualWakeupBtn.classList.remove('bg-primary', 'hover:bg-dark');
         manualWakeupBtn.classList.add('bg-red-500', 'hover:bg-red-600');
     }
 
-    // start timeout to auto-reset if no reply/interaction
+    // 启动超时以在无回复/交互时自动重置
     if (wakeTimer) {
         clearTimeout(wakeTimer);
         wakeTimer = null;
@@ -629,25 +621,26 @@ function wakeUpAssistant() {
     }, wakeTimeout * 1000);
 }
 
+// 重置助手
 function resetAssistant() {
     isWakeUp = false;
     updateStatus('等待唤醒...', 'idle');
     updateRecognitionResult('请唤醒助手并开始说话...', false);
     updateAssistantResponse('助手已关闭，说"' + wakeWord + '"重新唤醒...', false);
     stopAudioVisualization();
-    // keep recognition running in background to detect wake word
+    // 保持识别在后台运行以检测唤醒词
     if (manualWakeupBtn) {
         manualWakeupBtn.innerHTML = '<i class="fa fa-microphone mr-2"></i><span>手动唤醒</span>';
         manualWakeupBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
         manualWakeupBtn.classList.add('bg-primary', 'hover:bg-dark');
     }
-    // clear timeout
+    // 清除超时
     if (wakeTimer) {
         clearTimeout(wakeTimer);
         wakeTimer = null;
     }
 
-    // ensure recognition restarts if it was stopped
+    // 确保识别在停止后重启
     setTimeout(() => {
         try {
             if (!isListening) startListening();
@@ -657,22 +650,22 @@ function resetAssistant() {
     }, 200);
 }
 
-// After assistant replies once, schedule a quick reset
+// 助手回复后安排快速重置
 function scheduleResetAfterReply() {
     if (wakeTimer) {
         clearTimeout(wakeTimer);
         wakeTimer = null;
     }
-    // short delay to allow user to see the reply and finish playing audio
+    // 短暂延迟，允许用户查看回复并完成播放音频
     wakeTimer = setTimeout(() => {
         // 检查是否正在播放语音，如果是则不重置助手
-        if (!speechSynthesis.speaking && !isAudioPlaying && !isStreaming) {
+        if (!speechSynthesis.speaking && !isAudioPlaying) {
             resetAssistant();
         }
     }, 1500);
 }
 
-// Update processCommand to call scheduleResetAfterReply after updating assistant response
+// 处理命令
 async function processCommand(command) {
     if (!command) return;
     addToHistory(command, 'user');
@@ -682,53 +675,70 @@ async function processCommand(command) {
     stopListening();
 
     try {
-        const resp = await fetch(backendApiUrl, {
+        const response = await fetch('/process-voice', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: command, wake_word: wakeWord })
         });
 
-        if (resp.ok) {
-            const data = await resp.json();
-            const responseText = data.response || '助手未返回内容';
-            updateAssistantResponse(responseText, false);
-            addToHistory(responseText, 'assistant');
-            // after assistant replies once, return to idle
-            scheduleResetAfterReply();
-            return;
+        if (!response.ok) throw new Error('网络请求失败');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = '';
+        let streamBuffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+
+                        if (data.chunk) {
+                            streamBuffer += data.chunk;
+                            updateAssistantResponse(streamBuffer + '▊', true);
+                        }
+
+                        if (data.final) {
+                            const finalData = data.final;
+                            fullResponse = finalData.reply || '';
+
+                            updateAssistantResponse(fullResponse, false);
+                            addToHistory(fullResponse, 'assistant');
+
+                            speakText(fullResponse);
+
+                            if (finalData.activity === 'roll' && finalData.dice_type) {
+                                showDiceAnimation(finalData.dice_type, finalData.dice_result);
+                            }
+
+                            if (finalData.activity === 'scoreboard') {
+                                const gameStateResponse = await fetch('/get-game-state');
+                                const gameState = await gameStateResponse.json();
+                                updateScoreDisplay(gameState.scores);
+                            }
+
+                            scheduleResetAfterReply();
+                        }
+                    } catch (e) {
+                        console.warn('解析流数据失败:', e);
+                    }
+                }
+            }
         }
 
-        // fallback to local simulation when backend fails
-        const fallback = await simulateApiCall(command);
-        updateAssistantResponse(fallback, false);
-        addToHistory(fallback, 'assistant');
-        scheduleResetAfterReply();
     } catch (error) {
         console.error('API请求错误:', error);
-        const fallback = await simulateApiCall(command);
-        updateAssistantResponse('抱歉，处理您的请求时出错。' + fallback, false);
+        updateAssistantResponse('抱歉，处理您的请求时出错。', false);
+        speakText('抱歉，处理您的请求时出错。');
         scheduleResetAfterReply();
     }
-}
-
-// 模拟API调用（后备）
-function simulateApiCall(command) {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            if (command.includes('天气')) {
-                resolve('今天天气晴朗，气温25°C，适合户外活动。');
-            } else if (command.includes('时间')) {
-                const now = new Date();
-                resolve(`现在是${now.getHours()}点${now.getMinutes()}分。`);
-            } else if (command.includes('你好') || command.includes('您好')) {
-                resolve('您好！有什么我可以帮您的吗？');
-            } else if (command.includes('再见') || command.includes('拜拜')) {
-                resolve('再见！如果您还有其他问题，随时可以唤醒我。');
-            } else {
-                resolve(`您说的是："${command}"。这是一个模拟回复，实际应用中会根据您的指令调用相应的服务。`);
-            }
-        }, 1000);
-    });
 }
 
 // 更新状态显示
@@ -791,94 +801,28 @@ function clearAll() {
     if (assistantResponse) assistantResponse.innerHTML = '<p class="text-gray-400 italic">助手将在这里回复您的问题...</p>';
     if (historyContainer) historyContainer.innerHTML = '<p class="text-gray-400 italic text-center">暂无历史记录</p>';
 }
+
+// 语音合成相关
 let speechSynthesis = window.speechSynthesis;
 let currentSpeechUtterance = null;
-let streamBuffer = '';
 
-// Initialize AudioContext for streaming audio playback
-function initAudioContext() {
-    if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-}
-
-// Initialize SpeechSynthesis for fallback TTS
+// 初始化SpeechSynthesis用于备用TTS
 function initSpeechSynthesis() {
-    console.log('Initializing speech synthesis...');
+    console.log('初始化语音合成...');
     if (!('speechSynthesis' in window)) {
         console.warn('浏览器不支持语音合成');
         return;
     }
-    console.log('Speech synthesis initialized successfully.');
+    console.log('语音合成初始化成功。');
 }
 
-// Play audio chunks as they arrive from the server
-async function playAudioChunk(chunkData) {
-    console.log('playAudioChunk called with chunk size:', chunkData.length);
-    if (!isStreaming) {
-        console.log('Streaming is stopped, skipping audio chunk');
-        return;
-    }
-    
-    try {
-        // 直接使用Audio对象播放base64音频数据，避免AudioContext的解码问题
-        console.log('Creating audio element for playback...');
-        
-        // 将base64数据转换为Blob URL
-        const binaryString = atob(chunkData);
-        const len = binaryString.length;
-        const arrayBuffer = new ArrayBuffer(len);
-        const view = new Uint8Array(arrayBuffer);
-        for (let i = 0; i < len; i++) {
-            view[i] = binaryString.charCodeAt(i);
-        }
-        
-        // 假设返回的是wav格式的音频数据
-        const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-        const audioUrl = URL.createObjectURL(blob);
-        
-        // 创建并播放音频
-        const audio = new Audio(audioUrl);
-        
-        audio.onloadedmetadata = () => {
-            console.log('Audio loaded, duration:', audio.duration);
-        };
-        
-        audio.onplay = () => {
-            console.log('Audio playback started');
-        };
-        
-        audio.onended = () => {
-            console.log('Audio playback ended');
-            // 释放Blob URL
-            URL.revokeObjectURL(audioUrl);
-        };
-        
-        audio.onerror = (error) => {
-            console.error('Audio playback error:', error);
-            // 释放Blob URL
-            URL.revokeObjectURL(audioUrl);
-        };
-        
-        // 播放音频
-        await audio.play();
-        console.log('Audio play() called successfully');
-        
-    } catch (error) {
-        console.error('Error playing audio chunk:', error);
-        console.error('Error stack:', error.stack);
-    }
-}
-
-// Call qwen3-tts-flash API for non-streaming TTS
+// 调用qwen3-tts-flash API进行非流式TTS
 async function qwen3TtsFlash(text) {
-    console.log('qwen3TtsFlash called with text:', text);
+    console.log('qwen3TtsFlash被调用，文本:', text);
     if (!text) return;
     
     try {
-        // Set streaming status to false since we're using non-streaming
-        isStreaming = false;
-        console.log('TTS started, language:', ttsLanguage, 'voice:', ttsVoice);
+        console.log('TTS开始，语言:', ttsLanguage, '音色:', ttsVoice);
         updateVoiceStatus('正在生成语音...', 'active');
         
         const response = await fetch('/tts', {
@@ -888,7 +832,7 @@ async function qwen3TtsFlash(text) {
             },
             body: JSON.stringify({
                 text: text,
-                language_type: ttsLanguage, // Updated parameter name from model documentation
+                language_type: ttsLanguage, // 从模型文档更新的参数名称
                 voice: ttsVoice
             })
         });
@@ -897,27 +841,23 @@ async function qwen3TtsFlash(text) {
             throw new Error(`TTS API请求失败: ${response.status}`);
         }
         
-        console.log('TTS API response received successfully');
+        console.log('TTS API响应成功接收');
         const result = await response.json();
         
-        console.log('TTS result:', JSON.stringify(result, null, 2));
+        console.log('TTS结果:', JSON.stringify(result, null, 2));
         
         if (result.output && result.output.audio) {
             // 优先使用音频URL进行播放
             if (result.output.audio.url) {
-                console.log('Found audio URL:', result.output.audio.url);
-                await playCompleteAudio(result.output.audio.url, false);
-            } else if (result.output.audio.data) {
-                // 备选方案：使用base64数据
-                console.log('Found complete audio data, length:', result.output.audio.data.length);
-                await playCompleteAudio(result.output.audio.data, true);
+                console.log('找到音频URL:', result.output.audio.url);
+                await playCompleteAudio(result.output.audio.url);
             } else {
-                console.error('No audio URL or data found in response');
+                console.error('响应中未找到音频URL');
                 // 回退到原生TTS
                 speakTextNative(text);
             }
         } else {
-            console.error('No audio information found in response');
+            console.error('响应中未找到音频信息');
             // 回退到原生TTS
             speakTextNative(text);
         }
@@ -926,18 +866,13 @@ async function qwen3TtsFlash(text) {
         
     } catch (error) {
         console.error('TTS处理失败:', error);
-        console.error('Error stack:', error.stack);
         updateVoiceStatus('语音生成失败，使用备选方案', 'error');
-        // Fallback to native TTS if qwen3-tts-flash fails
+        // 如果qwen3-tts-flash失败，回退到原生TTS
         speakTextNative(text);
-    } finally {
-        // Reset streaming status
-        isStreaming = false;
-        console.log('TTS ended, resources cleaned up');
     }
 }
 
-// Native TTS fallback function
+// 原生TTS备用函数
 function speakTextNative(text) {
     if (!text || !speechSynthesis) return;
 
@@ -952,7 +887,7 @@ function speakTextNative(text) {
 
     currentSpeechUtterance.onstart = () => {
         updateVoiceStatus('语音播放中...', 'active');
-        // Update voice control button
+        // 更新语音控制按钮
         const voiceControlBtn = document.getElementById('voice-control-btn');
         if (voiceControlBtn) {
             voiceControlBtn.textContent = '⏹️ 停止语音';
@@ -961,7 +896,7 @@ function speakTextNative(text) {
 
     currentSpeechUtterance.onend = () => {
         updateVoiceStatus('语音播放完成', 'idle');
-        // Reset voice control button
+        // 重置语音控制按钮
         const voiceControlBtn = document.getElementById('voice-control-btn');
         if (voiceControlBtn) {
             voiceControlBtn.textContent = '🔊 播放语音';
@@ -971,7 +906,7 @@ function speakTextNative(text) {
     currentSpeechUtterance.onerror = (event) => {
         console.error('语音合成错误:', event);
         updateVoiceStatus('语音播放错误', 'error');
-        // Reset voice control button
+        // 重置语音控制按钮
         const voiceControlBtn = document.getElementById('voice-control-btn');
         if (voiceControlBtn) {
             voiceControlBtn.textContent = '🔊 播放语音';
@@ -981,39 +916,35 @@ function speakTextNative(text) {
     speechSynthesis.speak(currentSpeechUtterance);
 }
 
+// 停止所有语音
 function stopAllSpeech() {
     // 设置标志，表示是用户主动停止音频
     isUserStoppingAudio = true;
     
-    // Stop native speech synthesis
+    // 停止原生语音合成
     if (speechSynthesis && speechSynthesis.speaking) {
         speechSynthesis.cancel();
     }
     
-    // Stop the current Audio element if it exists
+    // 停止当前Audio元素（如果存在）
     if (currentAudioElement) {
-        console.log('Stopping current audio element...');
+        console.log('停止当前音频元素...');
         try {
             currentAudioElement.pause();
             currentAudioElement.src = ''; // 清空音频源，确保立即停止
         } catch (error) {
-            console.error('Error stopping audio element:', error);
+            console.error('停止音频元素时出错:', error);
         } finally {
             currentAudioElement = null;
             isAudioPlaying = false;
         }
     }
     
-    // Stop qwen3-tts-flash (both streaming and non-streaming)
-    isStreaming = false;
-    
-    // Reset voice control button
+    // 重置语音控制按钮
     const voiceControlBtn = document.getElementById('voice-control-btn');
     if (voiceControlBtn) {
         voiceControlBtn.textContent = '🔊 播放语音';
     }
-    
-    // 移除停止后的语音提示，只在播放开始和结束时更新状态
     
     // 重置标志
     setTimeout(() => {
@@ -1021,11 +952,11 @@ function stopAllSpeech() {
     }, 100);
 }
 
-// Play complete audio from URL or base64 data
-async function playCompleteAudio(audioSource, isBase64 = false) {
-    console.log('playCompleteAudio called, isBase64:', isBase64);
-    if (!audioSource) {
-        console.warn('No audio source to play');
+// 播放完整音频（从URL）
+async function playCompleteAudio(audioUrl) {
+    console.log('playCompleteAudio被调用，URL:', audioUrl);
+    if (!audioUrl) {
+        console.warn('没有音频源可播放');
         return;
     }
     
@@ -1035,23 +966,17 @@ async function playCompleteAudio(audioSource, isBase64 = false) {
         // 保存当前Audio对象，以便在stopAllSpeech中停止
         currentAudioElement = audio;
         
-        // 根据传入的是URL还是base64数据设置音频源
-        if (isBase64) {
-            console.log('Creating audio element with base64 data URL...');
-            audio.src = `data:audio/mp3;base64,${audioSource}`;
-        } else {
-            console.log('Creating audio element with URL:', audioSource);
-            audio.src = audioSource;
-        }
+        console.log('创建音频元素，URL:', audioUrl);
+        audio.src = audioUrl;
         
         audio.onloadedmetadata = () => {
-            console.log('Audio loaded, duration:', audio.duration);
+            console.log('音频加载完成，时长:', audio.duration);
         };
         
         audio.onplay = () => {
-            console.log('Audio playback started');
+            console.log('音频播放开始');
             isAudioPlaying = true;
-            // Update voice control button
+            // 更新语音控制按钮
             const voiceControlBtn = document.getElementById('voice-control-btn');
             if (voiceControlBtn) {
                 voiceControlBtn.textContent = '⏹️ 停止语音';
@@ -1059,23 +984,23 @@ async function playCompleteAudio(audioSource, isBase64 = false) {
         };
         
         audio.onended = () => {
-            console.log('Audio playback ended');
+            console.log('音频播放结束');
             isAudioPlaying = false;
-            // Reset voice control button
+            // 重置语音控制按钮
             const voiceControlBtn = document.getElementById('voice-control-btn');
             if (voiceControlBtn) {
                 voiceControlBtn.textContent = '🔊 播放语音';
             }
-            // Reset currentAudioElement to release resources
+            // 重置currentAudioElement以释放资源
             if (currentAudioElement === audio) {
                 currentAudioElement = null;
             }
         };
         
         audio.onerror = (error) => {
-            console.error('Audio playback error:', error);
+            console.error('音频播放错误:', error);
             isAudioPlaying = false;
-            // Reset currentAudioElement to release resources
+            // 重置currentAudioElement以释放资源
             if (currentAudioElement === audio) {
                 currentAudioElement = null;
             }
@@ -1084,66 +1009,38 @@ async function playCompleteAudio(audioSource, isBase64 = false) {
                 // 回退到原生TTS
                 const text = document.getElementById('assistant-response').textContent;
                 if (text) {
-                    console.log('Falling back to native TTS');
+                    console.log('回退到原生TTS');
                     speakTextNative(text);
                 }
             }
         };
         
-        console.log('Complete audio playback started');
+        console.log('完整音频播放开始');
         await audio.play();
-        console.log('Audio play() called successfully');
+        console.log('audio.play()调用成功');
         
     } catch (error) {
-        console.error('Error in playCompleteAudio:', error);
-        console.error('Error stack:', error.stack);
+        console.error('playCompleteAudio中的错误:', error);
         // 回退到原生TTS
         const text = document.getElementById('assistant-response').textContent;
         if (text) {
-            console.log('Falling back to native TTS');
+            console.log('回退到原生TTS');
             speakTextNative(text);
         }
     }
 }
 
-// Helper function to play audio with a specific format
-async function playAudioWithFormat(arrayBuffer, format) {
-    // 这个函数已经不再使用，但保留以确保兼容性
-    return Promise.reject(new Error('This function is deprecated'));
-}
-
+// 执行语音合成
 function speakText(text) {
-    console.log('speakText called with:', text, 'ttsEnabled:', ttsEnabled);
+    console.log('speakText被调用，文本:', text, 'ttsEnabled:', ttsEnabled);
     if (!text) return;
     
-    // 确保AudioContext被激活（Web Audio API需要用户交互才能激活）
-    initAudioContext();
-    if (audioContext && audioContext.state === 'suspended') {
-        console.log('Resuming AudioContext...');
-        audioContext.resume().then(() => {
-            console.log('AudioContext resumed successfully');
-            // 在AudioContext激活后执行TTS
-            doSpeakText(text);
-        }).catch(error => {
-            console.error('Failed to resume AudioContext:', error);
-            // 回退到原生TTS
-            speakTextNative(text);
-        });
-    } else {
-        // AudioContext已经激活，直接执行TTS
-        doSpeakText(text);
-    }
-}
-
-// Helper function to actually perform speech synthesis after AudioContext is ready
-function doSpeakText(text) {
-    console.log('doSpeakText called with:', text);
     // 根据ttsEnabled状态决定使用哪种TTS方案
     if (ttsEnabled) {
-        // 使用qwen3-tts-flash模型进行流式语音合成
+        // 使用qwen3-tts-flash模型进行非流式语音合成
         qwen3TtsFlash(text);
         
-        // Update voice control button
+        // 更新语音控制按钮
         const voiceControlBtn = document.getElementById('voice-control-btn');
         if (voiceControlBtn) {
             voiceControlBtn.textContent = '⏹️ 停止语音';
@@ -1154,6 +1051,7 @@ function doSpeakText(text) {
     }
 }
 
+// 更新语音状态
 function updateVoiceStatus(text, status) {
     const statusEl = document.getElementById('voice-status');
     if (!statusEl) return;
@@ -1173,6 +1071,7 @@ function updateVoiceStatus(text, status) {
     }
 }
 
+// 显示骰子动画
 function showDiceAnimation(diceType, result) {
     const diceContainer = document.getElementById('dice-animation-container');
     if (!diceContainer) return;
@@ -1195,6 +1094,7 @@ function showDiceAnimation(diceType, result) {
     }, 3000);
 }
 
+// 更新分数显示
 function updateScoreDisplay(scores) {
     const scoreContainer = document.getElementById('score-display');
     if (!scoreContainer) return;
@@ -1229,98 +1129,3 @@ function updateScoreDisplay(scores) {
         });
     }
 }
-
-async function processCommand(command) {
-    if (!command) return;
-    addToHistory(command, 'user');
-    updateAssistantResponse('正在处理您的请求...', false);
-
-    try {
-        const response = await fetch('/process-voice', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: command })
-        });
-
-        if (!response.ok) throw new Error('网络请求失败');
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let fullResponse = '';
-        streamBuffer = '';
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-
-                        if (data.chunk) {
-                            streamBuffer += data.chunk;
-                            updateAssistantResponse(streamBuffer + '▊', true);
-                        }
-
-                        if (data.final) {
-                            const finalData = data.final;
-                            fullResponse = finalData.reply || '';
-
-                            updateAssistantResponse(fullResponse, false);
-                            addToHistory(fullResponse, 'assistant');
-
-                            speakText(fullResponse);
-
-                            if (finalData.activity === 'roll' && finalData.dice_type) {
-                                showDiceAnimation(finalData.dice_type, finalData.dice_result);
-                            }
-
-                            if (finalData.activity === 'scoreboard') {
-                                const gameStateResponse = await fetch('/get-game-state');
-                                const gameState = await gameStateResponse.json();
-                                updateScoreDisplay(gameState.scores);
-                            }
-
-                            scheduleResetAfterReply();
-                        }
-                    } catch (e) {
-                        console.warn('解析流数据失败:', e);
-                    }
-                }
-            }
-        }
-
-    } catch (error) {
-        console.error('API请求错误:', error);
-        const fallback = await simulateApiCall(command);
-        updateAssistantResponse('抱歉，处理您的请求时出错。' + fallback, false);
-        speakText('抱歉，处理您的请求时出错。');
-        scheduleResetAfterReply();
-    }
-}
-
-function simulateApiCall(command) {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            if (command.includes('天气')) {
-                resolve('今天天气晴朗，气温25°C，适合户外活动。');
-            } else if (command.includes('时间')) {
-                const now = new Date();
-                resolve(`现在是${now.getHours()}点${now.getMinutes()}分。`);
-            } else if (command.includes('你好') || command.includes('您好')) {
-                resolve('您好！有什么我可以帮您的吗？');
-            } else if (command.includes('再见') || command.includes('拜拜')) {
-                resolve('再见！如果您还有其他问题，随时可以唤醒我。');
-            } else {
-                resolve(`您说的是："${command}"。这是一个模拟回复，实际应用中会根据您的指令调用相应的服务。`);
-            }
-        }, 1000);
-    });
-}
-
-// Voice control button setup - moved to setupEventListeners function
-// This replaces the second DOMContentLoaded listener
