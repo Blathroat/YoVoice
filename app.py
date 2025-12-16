@@ -3,6 +3,8 @@ from openai import OpenAI
 import json
 import random
 from typing import Any, Dict
+import dashscope
+import base64
 
 app = Flask(__name__)
 app.config['WTF_I18N_ENABLED'] = False
@@ -225,6 +227,58 @@ def get_game_rules(game_name):
         "game": game_name,
         "rules": rules
     })
+
+
+@app.route('/tts', methods=['POST'])
+def tts():
+    """qwen3-tts-flash 模型的非流式语音合成接口"""
+    data = request.get_json(silent=True) or {}
+    text = (data.get('text') or '').strip()
+    language_type = data.get('language_type', 'Chinese')
+    voice = data.get('voice', 'Cherry')
+    
+    if not text:
+        return jsonify({'error': '文本不能为空'}), 400
+    
+    try:
+        # 使用dashscope SDK进行非流式TTS调用
+        # 配置API密钥
+        dashscope.api_key = MODEL_API_KEY
+        
+        # 非流式调用，直接返回完整结果
+        response = dashscope.MultiModalConversation.call(
+            model="qwen3-tts-flash",
+            text=text,
+            voice=voice,
+            language_type=language_type,
+            stream=False
+        )
+        
+        # 处理完整响应
+        if response.output is not None:
+            audio = response.output.audio
+            result = {
+                "status_code": response.status_code,
+                "request_id": response.request_id,
+                "output": {
+                    "finish_reason": response.output.finish_reason,
+                    "audio": {
+                        "data": audio.data if audio.data else "",
+                        "url": audio.url if audio.url else "",
+                        "id": audio.id if audio.id else "",
+                        "expires_at": audio.expires_at if audio.expires_at else 0
+                    }
+                },
+                "usage": {
+                    "characters": response.usage.characters if response.usage else 0
+                }
+            }
+            return jsonify(result)
+        else:
+            return jsonify({'error': 'TTS处理失败: 未返回音频数据'}), 500
+    
+    except Exception as e:
+        return jsonify({'error': f'TTS处理失败: {str(e)}'}), 500
 
 
 if __name__ == '__main__':

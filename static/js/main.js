@@ -5,7 +5,6 @@
 let recognition;
 let isWakeUp = false;
 let isListening = false;
-let audioContext;
 let analyser;
 let microphone;
 let animationId;
@@ -18,6 +17,91 @@ let quickWake = false;
 let wakeTimer = null;
 let manualDebugEnabled = false; // new: whether manual debug input is visible
 let isProcessingManualCommand = false; // new: whether we're processing a manual command
+// TTS settings - constants extracted from model documentation
+const SUPPORTED_LANGUAGES = [
+    { value: 'Auto', label: '自动检测' },
+    { value: 'Chinese', label: '中文' },
+    { value: 'English', label: '英语' },
+    { value: 'German', label: '德语' },
+    { value: 'Italian', label: '意大利语' },
+    { value: 'Portuguese', label: '葡萄牙语' },
+    { value: 'Spanish', label: '西班牙语' },
+    { value: 'Japanese', label: '日语' },
+    { value: 'Korean', label: '韩语' },
+    { value: 'French', label: '法语' },
+    { value: 'Russian', label: '俄语' }
+];
+
+const SUPPORTED_VOICES = [
+    // 标准音色
+    { name: '芊悦', value: 'Cherry', description: '阳光积极、亲切自然小姐姐' },
+    { name: '苏瑶', value: 'Serena', description: '温柔小姐姐' },
+    { name: '晨煦', value: 'Ethan', description: '阳光、温暖、活力、朝气' },
+    { name: '千雪', value: 'Chelsie', description: '二次元虚拟女友' },
+    { name: '茉兔', value: 'Momo', description: '撒娇搞怪，逗你开心' },
+    { name: '十三', value: 'Vivian', description: '拽拽的、可爱的小暴躁' },
+    { name: '月白', value: 'Moon', description: '率性帅气的月白' },
+    { name: '四月', value: 'Maia', description: '知性与温柔的碰撞' },
+    { name: '凯', value: 'Kai', description: '耳朵的一场SPA' },
+    { name: '不吃鱼', value: 'Nofish', description: '不会翘舌音的设计师' },
+    { name: '萌宝', value: 'Bella', description: '喝酒不打醉拳的小萝莉' },
+    { name: '詹妮弗', value: 'Jennifer', description: '品牌级、电影质感般美语女声' },
+    { name: '甜茶', value: 'Ryan', description: '节奏拉满，戏感炸裂' },
+    { name: '卡捷琳娜', value: 'Katerina', description: '御姐音色，韵律回味十足' },
+    { name: '艾登', value: 'Aiden', description: '精通厨艺的美语大男孩' },
+    { name: '沧明子', value: 'Eldric Sage', description: '沉稳睿智的老者' },
+    { name: '乖小妹', value: 'Mia', description: '温顺如春水，乖巧如初雪' },
+    { name: '沙小弥', value: 'Mochi', description: '聪明伶俐的小大人' },
+    { name: '燕铮莺', value: 'Bellona', description: '声音洪亮，吐字清晰' },
+    { name: '田叔', value: 'Vincent', description: '独特的沙哑烟嗓' },
+    { name: '萌小姬', value: 'Bunny', description: '萌属性爆棚的小萝莉' },
+    { name: '阿闻', value: 'Neil', description: '专业新闻主持人' },
+    { name: '墨讲师', value: 'Elias', description: '严谨又生动的讲师' },
+    { name: '徐大爷', value: 'Arthur', description: '质朴的老者嗓音' },
+    { name: '邻家妹妹', value: 'Nini', description: '糯米糍一样软黏的嗓音' },
+    { name: '诡婆婆', value: 'Ebona', description: '幽暗神秘的嗓音' },
+    { name: '小婉', value: 'Seren', description: '温和舒缓助眠音' },
+    { name: '顽屁小孩', value: 'Pip', description: '调皮捣蛋的童真' },
+    { name: '少女阿月', value: 'Stella', description: '甜到发腻的迷糊少女' },
+    { name: '博德加', value: 'Bodega', description: '热情的西班牙大叔' },
+    { name: '索尼莎', value: 'Sonrisa', description: '热情开朗的拉美大姐' },
+    { name: '阿列克', value: 'Alek', description: '战斗民族的冷暖' },
+    { name: '多尔切', value: 'Dolce', description: '慵懒的意大利大叔' },
+    { name: '素熙', value: 'Sohee', description: '温柔开朗的韩国欧尼' },
+    { name: '小野杏', value: 'Ono Anna', description: '鬼灵精怪的青梅竹马' },
+    { name: '莱恩', value: 'Lenn', description: '理性叛逆的德国青年' },
+    { name: '埃米尔安', value: 'Emilien', description: '浪漫的法国大哥哥' },
+    { name: '安德雷', value: 'Andre', description: '磁性沉稳男生' },
+    { name: '拉迪奥·戈尔', value: 'Radio Gol', description: '足球诗人' },
+    // 方言音色
+    { name: '上海-阿珍', value: 'Jada', description: '风风火火的沪上阿姐' },
+    { name: '北京-晓东', value: 'Dylan', description: '北京胡同里长大的少年' },
+    { name: '南京-老李', value: 'Li', description: '耐心的瑜伽老师' },
+    { name: '陕西-秦川', value: 'Marcus', description: '面宽话短，心实声沉' },
+    { name: '闽南-阿杰', value: 'Roy', description: '诙谐直爽的台湾哥仔' },
+    { name: '天津-李彼得', value: 'Peter', description: '天津相声，专业捧哏' },
+    { name: '四川-晴儿', value: 'Sunny', description: '甜到心里的川妹子' },
+    { name: '四川-程川', value: 'Eric', description: '跳脱市井的成都男子' },
+    { name: '粤语-阿强', value: 'Rocky', description: '幽默风趣的阿强' },
+    { name: '粤语-阿清', value: 'Kiki', description: '甜美的港妹闺蜜' }
+];
+
+// TTS settings
+let ttsEnabled = false; // whether qwen3-tts-flash is enabled
+let ttsLanguage = 'Chinese'; // TTS language type
+let ttsVoice = 'Cherry'; // TTS voice
+
+// Audio streaming variables
+let audioContext = null; // Global audio context for both visualization and TTS
+let audioQueue = [];
+let isPlaying = false;
+let isStreaming = false; // Track if qwen3-tts-flash is streaming
+let currentAudioSource = null;
+let audioBuffer = [];
+let audioChunks = []; // Store audio chunks for qwen3-tts-flash
+let audioSources = []; // Track all audio sources for stopping
+let audioBlobParts = []; // 用于存储音频块，合并后播放
+let isAudioPlaying = false; // 标记是否正在播放合并后的音频
 
 // DOM元素 (will be assigned after DOM is ready)
 let statusIndicator;
@@ -65,11 +149,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const lsTimeout = localStorage.getItem('yv_wake_timeout');
         const lsQuick = localStorage.getItem('yv_quick_wake');
         const lsManualDebug = localStorage.getItem('yv_manual_debug');
+        // TTS settings
+        const lsTtsEnabled = localStorage.getItem('yv_tts_enabled');
+        const lsTtsLanguage = localStorage.getItem('yv_tts_language');
+        const lsTtsVoice = localStorage.getItem('yv_tts_voice');
+        
         if (lsWake) wakeWord = lsWake;
         else if (appEl && appEl.dataset && appEl.dataset.wakeWord) wakeWord = appEl.dataset.wakeWord;
         if (lsTimeout) wakeTimeout = parseInt(lsTimeout, 10) || wakeTimeout;
         if (lsQuick) quickWake = lsQuick === 'true';
         if (lsManualDebug) manualDebugEnabled = lsManualDebug === 'true';
+        if (lsTtsEnabled) ttsEnabled = lsTtsEnabled === 'true';
+        if (lsTtsLanguage) ttsLanguage = lsTtsLanguage;
+        if (lsTtsVoice) ttsVoice = lsTtsVoice;
     } catch (e) {
         console.warn('localStorage unavailable:', e);
     }
@@ -84,6 +176,39 @@ document.addEventListener('DOMContentLoaded', () => {
         if (manualDebugEnabled) manualDebugArea.classList.remove('hidden');
         else manualDebugArea.classList.add('hidden');
     }
+    
+    // TTS settings UI
+    const ttsEnabledToggle = document.getElementById('tts-enabled-toggle');
+    const ttsLanguageSelect = document.getElementById('tts-language-select');
+    const ttsVoiceSelect = document.getElementById('tts-voice-select');
+    
+    // Populate language options dynamically from SUPPORTED_LANGUAGES constant
+    if (ttsLanguageSelect) {
+        ttsLanguageSelect.innerHTML = '';
+        SUPPORTED_LANGUAGES.forEach(lang => {
+            const option = document.createElement('option');
+            option.value = lang.value;
+            option.textContent = lang.label;
+            ttsLanguageSelect.appendChild(option);
+        });
+        // Set current value
+        ttsLanguageSelect.value = ttsLanguage;
+    }
+    
+    // Populate voice options dynamically from SUPPORTED_VOICES constant
+    if (ttsVoiceSelect) {
+        ttsVoiceSelect.innerHTML = '';
+        SUPPORTED_VOICES.forEach(voice => {
+            const option = document.createElement('option');
+            option.value = voice.value;
+            option.textContent = `${voice.name} - ${voice.description}`;
+            ttsVoiceSelect.appendChild(option);
+        });
+        // Set current value
+        ttsVoiceSelect.value = ttsVoice;
+    }
+    
+    if (ttsEnabledToggle) ttsEnabledToggle.checked = ttsEnabled;
 
     // ensure sidebar initial transform is set if not defined
     if (settingsSidebar && !settingsSidebar.style.transform) {
@@ -154,10 +279,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const newTimeout = Math.max(1, parseInt((wakeTimeoutInput && wakeTimeoutInput.value), 10) || wakeTimeout);
             const newQuick = !!(quickWakeToggle && quickWakeToggle.checked);
             const newManualDebug = !!(debugManualToggle && debugManualToggle.checked);
+            
+            // TTS settings
+            const ttsEnabledToggle = document.getElementById('tts-enabled-toggle');
+            const ttsLanguageSelect = document.getElementById('tts-language-select');
+            const ttsVoiceSelect = document.getElementById('tts-voice-select');
+            
+            const newTtsEnabled = !!(ttsEnabledToggle && ttsEnabledToggle.checked);
+            const newTtsLanguage = (ttsLanguageSelect && ttsLanguageSelect.value) || ttsLanguage;
+            const newTtsVoice = (ttsVoiceSelect && ttsVoiceSelect.value) || ttsVoice;
+            
             wakeWord = newWake;
             wakeTimeout = newTimeout;
             quickWake = newQuick;
             manualDebugEnabled = newManualDebug;
+            // Update TTS settings
+            ttsEnabled = newTtsEnabled;
+            ttsLanguage = newTtsLanguage;
+            ttsVoice = newTtsVoice;
+            
             if (currentWakeWordDisplay) currentWakeWordDisplay.textContent = wakeWord;
 
             // persist
@@ -166,6 +306,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('yv_wake_timeout', String(wakeTimeout));
                 localStorage.setItem('yv_quick_wake', String(quickWake));
                 localStorage.setItem('yv_manual_debug', String(manualDebugEnabled));
+                // Persist TTS settings
+                localStorage.setItem('yv_tts_enabled', String(ttsEnabled));
+                localStorage.setItem('yv_tts_language', ttsLanguage);
+                localStorage.setItem('yv_tts_voice', ttsVoice);
             } catch (e) {
                 console.warn('localStorage unavailable:', e);
             }
@@ -181,6 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    initSpeechSynthesis();
     initVoiceRecognition();
     initAudioVisualization();
     createWaveBars();
@@ -364,6 +509,25 @@ function setupEventListeners() {
 
     if (clearBtn) {
         clearBtn.addEventListener('click', clearAll);
+    }
+    
+    // Voice control button setup
+    const voiceControlBtn = document.getElementById('voice-control-btn');
+    if (voiceControlBtn) {
+        voiceControlBtn.addEventListener('click', function() {
+            // Check if either native speech or streaming is active
+            if (speechSynthesis.speaking || isStreaming || audioSources.length > 0) {
+                // Stop all speech synthesis (native and streaming)
+                stopAllSpeech();
+                this.textContent = '🔊 播放语音';
+            } else {
+                const responseText = document.getElementById('assistant-response').textContent;
+                if (responseText && !responseText.includes('助手将在这里回复')) {
+                    speakText(responseText);
+                    this.textContent = '⏹️ 停止语音';
+                }
+            }
+        });
     }
 }
 
@@ -639,17 +803,152 @@ function clearAll() {
 }
 let speechSynthesis = window.speechSynthesis;
 let currentSpeechUtterance = null;
-let isStreaming = false;
 let streamBuffer = '';
 
+// Initialize AudioContext for streaming audio playback
+function initAudioContext() {
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+}
+
+// Initialize SpeechSynthesis for fallback TTS
 function initSpeechSynthesis() {
+    console.log('Initializing speech synthesis...');
     if (!('speechSynthesis' in window)) {
         console.warn('浏览器不支持语音合成');
         return;
     }
+    console.log('Speech synthesis initialized successfully.');
 }
 
-function speakText(text) {
+// Play audio chunks as they arrive from the server
+async function playAudioChunk(chunkData) {
+    console.log('playAudioChunk called with chunk size:', chunkData.length);
+    if (!isStreaming) {
+        console.log('Streaming is stopped, skipping audio chunk');
+        return;
+    }
+    
+    try {
+        // 直接使用Audio对象播放base64音频数据，避免AudioContext的解码问题
+        console.log('Creating audio element for playback...');
+        
+        // 将base64数据转换为Blob URL
+        const binaryString = atob(chunkData);
+        const len = binaryString.length;
+        const arrayBuffer = new ArrayBuffer(len);
+        const view = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < len; i++) {
+            view[i] = binaryString.charCodeAt(i);
+        }
+        
+        // 假设返回的是wav格式的音频数据
+        const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(blob);
+        
+        // 创建并播放音频
+        const audio = new Audio(audioUrl);
+        
+        audio.onloadedmetadata = () => {
+            console.log('Audio loaded, duration:', audio.duration);
+        };
+        
+        audio.onplay = () => {
+            console.log('Audio playback started');
+        };
+        
+        audio.onended = () => {
+            console.log('Audio playback ended');
+            // 释放Blob URL
+            URL.revokeObjectURL(audioUrl);
+        };
+        
+        audio.onerror = (error) => {
+            console.error('Audio playback error:', error);
+            // 释放Blob URL
+            URL.revokeObjectURL(audioUrl);
+        };
+        
+        // 播放音频
+        await audio.play();
+        console.log('Audio play() called successfully');
+        
+    } catch (error) {
+        console.error('Error playing audio chunk:', error);
+        console.error('Error stack:', error.stack);
+    }
+}
+
+// Call qwen3-tts-flash API for non-streaming TTS
+async function qwen3TtsFlash(text) {
+    console.log('qwen3TtsFlash called with text:', text);
+    if (!text) return;
+    
+    try {
+        // Set streaming status to false since we're using non-streaming
+        isStreaming = false;
+        console.log('TTS started, language:', ttsLanguage, 'voice:', ttsVoice);
+        updateVoiceStatus('正在生成语音...', 'active');
+        
+        const response = await fetch('/tts', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: text,
+                language_type: ttsLanguage, // Updated parameter name from model documentation
+                voice: ttsVoice
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`TTS API请求失败: ${response.status}`);
+        }
+        
+        console.log('TTS API response received successfully');
+        const result = await response.json();
+        
+        console.log('TTS result:', JSON.stringify(result, null, 2));
+        
+        if (result.output && result.output.audio) {
+            // 优先使用音频URL进行播放
+            if (result.output.audio.url) {
+                console.log('Found audio URL:', result.output.audio.url);
+                await playCompleteAudio(result.output.audio.url, false);
+            } else if (result.output.audio.data) {
+                // 备选方案：使用base64数据
+                console.log('Found complete audio data, length:', result.output.audio.data.length);
+                await playCompleteAudio(result.output.audio.data, true);
+            } else {
+                console.error('No audio URL or data found in response');
+                // 回退到原生TTS
+                speakTextNative(text);
+            }
+        } else {
+            console.error('No audio information found in response');
+            // 回退到原生TTS
+            speakTextNative(text);
+        }
+        
+        updateVoiceStatus('语音播放完成', 'idle');
+        
+    } catch (error) {
+        console.error('TTS处理失败:', error);
+        console.error('Error stack:', error.stack);
+        updateVoiceStatus('语音生成失败，使用备选方案', 'error');
+        // Fallback to native TTS if qwen3-tts-flash fails
+        speakTextNative(text);
+    } finally {
+        // Reset streaming status
+        isStreaming = false;
+        console.log('TTS ended, resources cleaned up');
+    }
+}
+
+// Native TTS fallback function
+function speakTextNative(text) {
     if (!text || !speechSynthesis) return;
 
     if (speechSynthesis.speaking) {
@@ -663,18 +962,171 @@ function speakText(text) {
 
     currentSpeechUtterance.onstart = () => {
         updateVoiceStatus('语音播放中...', 'active');
+        // Update voice control button
+        const voiceControlBtn = document.getElementById('voice-control-btn');
+        if (voiceControlBtn) {
+            voiceControlBtn.textContent = '⏹️ 停止语音';
+        }
     };
 
     currentSpeechUtterance.onend = () => {
         updateVoiceStatus('语音播放完成', 'idle');
+        // Reset voice control button
+        const voiceControlBtn = document.getElementById('voice-control-btn');
+        if (voiceControlBtn) {
+            voiceControlBtn.textContent = '🔊 播放语音';
+        }
     };
 
     currentSpeechUtterance.onerror = (event) => {
         console.error('语音合成错误:', event);
         updateVoiceStatus('语音播放错误', 'error');
+        // Reset voice control button
+        const voiceControlBtn = document.getElementById('voice-control-btn');
+        if (voiceControlBtn) {
+            voiceControlBtn.textContent = '🔊 播放语音';
+        }
     };
 
     speechSynthesis.speak(currentSpeechUtterance);
+}
+
+function stopAllSpeech() {
+    // Stop native speech synthesis
+    if (speechSynthesis && speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+    }
+    
+    // Stop qwen3-tts-flash (both streaming and non-streaming)
+    isStreaming = false;
+    
+    // Reset voice control button
+    const voiceControlBtn = document.getElementById('voice-control-btn');
+    if (voiceControlBtn) {
+        voiceControlBtn.textContent = '🔊 播放语音';
+    }
+    
+    updateVoiceStatus('语音已停止', 'idle');
+}
+
+// Play complete audio from URL or base64 data
+async function playCompleteAudio(audioSource, isBase64 = false) {
+    console.log('playCompleteAudio called, isBase64:', isBase64);
+    if (!audioSource) {
+        console.warn('No audio source to play');
+        return;
+    }
+    
+    try {
+        // 创建并播放音频
+        const audio = new Audio();
+        
+        // 根据传入的是URL还是base64数据设置音频源
+        if (isBase64) {
+            console.log('Creating audio element with base64 data URL...');
+            audio.src = `data:audio/mp3;base64,${audioSource}`;
+        } else {
+            console.log('Creating audio element with URL:', audioSource);
+            audio.src = audioSource;
+        }
+        
+        audio.onloadedmetadata = () => {
+            console.log('Audio loaded, duration:', audio.duration);
+        };
+        
+        audio.onplay = () => {
+            console.log('Audio playback started');
+            isAudioPlaying = true;
+            // Update voice control button
+            const voiceControlBtn = document.getElementById('voice-control-btn');
+            if (voiceControlBtn) {
+                voiceControlBtn.textContent = '⏹️ 停止语音';
+            }
+        };
+        
+        audio.onended = () => {
+            console.log('Audio playback ended');
+            isAudioPlaying = false;
+            // Reset voice control button
+            const voiceControlBtn = document.getElementById('voice-control-btn');
+            if (voiceControlBtn) {
+                voiceControlBtn.textContent = '🔊 播放语音';
+            }
+        };
+        
+        audio.onerror = (error) => {
+            console.error('Audio playback error:', error);
+            isAudioPlaying = false;
+            // 回退到原生TTS
+            const text = document.getElementById('assistant-response').textContent;
+            if (text) {
+                console.log('Falling back to native TTS');
+                speakTextNative(text);
+            }
+        };
+        
+        console.log('Complete audio playback started');
+        await audio.play();
+        console.log('Audio play() called successfully');
+        
+    } catch (error) {
+        console.error('Error in playCompleteAudio:', error);
+        console.error('Error stack:', error.stack);
+        // 回退到原生TTS
+        const text = document.getElementById('assistant-response').textContent;
+        if (text) {
+            console.log('Falling back to native TTS');
+            speakTextNative(text);
+        }
+    }
+}
+
+// Helper function to play audio with a specific format
+async function playAudioWithFormat(arrayBuffer, format) {
+    // 这个函数已经不再使用，但保留以确保兼容性
+    return Promise.reject(new Error('This function is deprecated'));
+}
+
+function speakText(text) {
+    console.log('speakText called with:', text, 'ttsEnabled:', ttsEnabled);
+    if (!text) return;
+    
+    // 确保AudioContext被激活（Web Audio API需要用户交互才能激活）
+    initAudioContext();
+    if (audioContext && audioContext.state === 'suspended') {
+        console.log('Resuming AudioContext...');
+        audioContext.resume().then(() => {
+            console.log('AudioContext resumed successfully');
+            // 在AudioContext激活后执行TTS
+            doSpeakText(text);
+        }).catch(error => {
+            console.error('Failed to resume AudioContext:', error);
+            // 回退到原生TTS
+            speakTextNative(text);
+        });
+    } else {
+        // AudioContext已经激活，直接执行TTS
+        doSpeakText(text);
+    }
+}
+
+// Helper function to actually perform speech synthesis after AudioContext is ready
+function doSpeakText(text) {
+    console.log('doSpeakText called with:', text);
+    // 根据ttsEnabled状态决定使用哪种TTS方案
+    if (ttsEnabled) {
+        // 使用qwen3-tts-flash模型进行流式语音合成
+        qwen3TtsFlash(text);
+        
+        // Update voice control button
+        const voiceControlBtn = document.getElementById('voice-control-btn');
+        if (voiceControlBtn) {
+            voiceControlBtn.textContent = '⏹️ 停止语音';
+        }
+    } else {
+        // 使用备选的原生TTS方案
+        speakTextNative(text);
+    }
 }
 
 function updateVoiceStatus(text, status) {
@@ -845,22 +1297,5 @@ function simulateApiCall(command) {
     });
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    initSpeechSynthesis();
-
-    const voiceControlBtn = document.getElementById('voice-control-btn');
-    if (voiceControlBtn) {
-        voiceControlBtn.addEventListener('click', function() {
-            if (speechSynthesis.speaking) {
-                speechSynthesis.cancel();
-                this.textContent = '🔊 播放语音';
-            } else {
-                const responseText = document.getElementById('assistant-response').textContent;
-                if (responseText && !responseText.includes('助手将在这里回复')) {
-                    speakText(responseText);
-                    this.textContent = '⏹️ 停止语音';
-                }
-            }
-        });
-    }
-});
+// Voice control button setup - moved to setupEventListeners function
+// This replaces the second DOMContentLoaded listener
