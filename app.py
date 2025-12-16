@@ -34,14 +34,18 @@ class ChatAssistant:
     def __init__(self, api_key: str = MODEL_API_KEY, base_url: str = MODEL_BASE_URL):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
-    def process_game_request(self, user_text: str, current_state: dict, model: str = None) -> Any:
+    def process_game_request(self, user_text: str, current_state: dict, model: str = None, ai_name: str = "你好助手") -> Any:
         # 使用配置文件中的模型名称作为默认值
         if model is None:
             model = CHAT_ASSISTANT_MODEL
+        
+        # 将AI名称替换到模型提示中
+        prompt = MODEL_PROMPT.replace("{AI_NAME}", ai_name)
+        
         context = f"当前游戏状态: {json.dumps(current_state, ensure_ascii=False)}\n用户请求: {user_text}"
 
         messages = [
-            {"role": "system", "content": MODEL_PROMPT},
+            {"role": "system", "content": prompt},
             {"role": "user", "content": context},
         ]
 
@@ -98,6 +102,8 @@ def hello_world():
 def process_voice():
     data = request.get_json(silent=True) or {}
     text = (data.get('text') or '').strip()
+    # 获取用户在请求中提供的唤醒词，或者使用配置中的默认值
+    wake_word = data.get('wake_word', config.get('DEFAULT_WAKE_WORD', '你好助手'))
 
     if not text:
         return jsonify({'response': "抱歉，我没有收到任何内容。"})
@@ -105,7 +111,9 @@ def process_voice():
     try:
         def generate():
             full_response = ""
-            stream = chat_assistant.process_game_request(text, game_state)
+            # 使用用户提供的唤醒词作为AI名称
+            ai_name = wake_word
+            stream = chat_assistant.process_game_request(text, game_state, ai_name=ai_name)
 
             for chunk in stream:
                 if chunk.choices[0].delta.content:

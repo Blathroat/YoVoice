@@ -685,7 +685,7 @@ async function processCommand(command) {
         const resp = await fetch(backendApiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: command })
+            body: JSON.stringify({ text: command, wake_word: wakeWord })
         });
 
         if (resp.ok) {
