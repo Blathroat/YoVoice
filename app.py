@@ -6,41 +6,20 @@ from typing import Any, Dict
 import dashscope
 import base64
 
+# 读取配置文件
+with open('config.json', 'r', encoding='utf-8') as f:
+    config = json.load(f)
+
 app = Flask(__name__)
 app.config['WTF_I18N_ENABLED'] = False
-app.config['SECRET_KEY'] = "HU7YUSsBgjec3GdcS621"
+app.config['SECRET_KEY'] = config['SECRET_KEY']
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
 
-MODEL_API_KEY = "sk-65807fabe7bc4f9a8fb709b2bb4ffbd5"
-MODEL_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-MODEL_PROMPT = """你是一个游戏助手，负责处理游戏相关的请求。返回必须是有效的JSON格式。
-
-字段约定：
-1. "reply": string - 回复给用户的文本内容（自然语言）
-2. "activity": string - 必须是以下值之一：
-   - "none": 仅回复，无其他操作
-   - "roll": 掷骰子/随机数，需要包含：
-        "lower": int - 最小值（默认1）
-        "upper": int - 最大值
-   - "scoreboard": 更新计分板，需要包含：
-        当更新单条计分时可以返回：
-            { "name": string, "score": string }
-        当需要返回或更新多条计分时，请使用列表字段：
-            "scores": [ {"name": string, "score": string}, ... ]
-
-说明与约束：
-- 计分板的传输格式优先使用 "scores" 列表；单条更新也应同时兼容单条 {name, score} 的方式。
-- 前端可能会在启用“快速唤醒”时把唤醒词从发送到模型的文本中移除；模型不应该依赖于请求中包含唤醒词。
-- 当用户只是唤醒但未提供具体命令时（或命令内容为单个标点符号/空字符串），请将 activity 置为 "none" 并在 reply 中给出友好提示，而不要把标点作为命令内容。
-- 返回的 JSON 必须是完整有效的对象，且不包含多余的注释或主体外文本。流式场景中，每次最终消息应包含完整 JSON 对象作为最终值。
-
-示例（单次更新）：
-{ "reply": "已将玩家A的分数设为10", "activity": "scoreboard", "name": "玩家A", "score": 10 }
-
-示例（多条更新）：
-{ "reply": "已更新计分板", "activity": "scoreboard", "scores": [{"name":"玩家A","score":10},{"name":"玩家B","score":5}] }
-
-当前游戏状态会作为上下文传递，请在回复中尽量使用简洁明了的 JSON 结构。"""
+MODEL_API_KEY = config['MODEL_API_KEY']
+MODEL_BASE_URL = config['MODEL_BASE_URL']
+MODEL_PROMPT = config['MODEL_PROMPT']
+CHAT_ASSISTANT_MODEL = config['CHAT_ASSISTANT_MODEL']
+TTS_MODEL = config['TTS_MODEL']
 
 # 将 scores 从 dict 改为 list，以便传递多项分数：
 # game_state['scores'] = [ {"name": "player1", "score": 10}, ... ]
@@ -55,7 +34,10 @@ class ChatAssistant:
     def __init__(self, api_key: str = MODEL_API_KEY, base_url: str = MODEL_BASE_URL):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
-    def process_game_request(self, user_text: str, current_state: dict, model: str = "qwen3-max") -> Any:
+    def process_game_request(self, user_text: str, current_state: dict, model: str = None) -> Any:
+        # 使用配置文件中的模型名称作为默认值
+        if model is None:
+            model = CHAT_ASSISTANT_MODEL
         context = f"当前游戏状态: {json.dumps(current_state, ensure_ascii=False)}\n用户请求: {user_text}"
 
         messages = [
@@ -229,6 +211,17 @@ def get_game_rules(game_name):
     })
 
 
+@app.route('/config')
+def get_config():
+    """提供配置信息的API端点"""
+    return jsonify({
+        "SUPPORTED_LANGUAGES": config['SUPPORTED_LANGUAGES'],
+        "SUPPORTED_VOICES": config['SUPPORTED_VOICES'],
+        "DEFAULT_WAKE_WORD": config['DEFAULT_WAKE_WORD'],
+        "DEFAULT_WAKE_TIMEOUT": config['DEFAULT_WAKE_TIMEOUT']
+    })
+
+
 @app.route('/tts', methods=['POST'])
 def tts():
     """qwen3-tts-flash 模型的非流式语音合成接口"""
@@ -247,7 +240,7 @@ def tts():
         
         # 非流式调用，直接返回完整结果
         response = dashscope.MultiModalConversation.call(
-            model="qwen3-tts-flash",
+            model=TTS_MODEL,
             text=text,
             voice=voice,
             language_type=language_type,

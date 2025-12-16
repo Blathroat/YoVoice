@@ -18,73 +18,14 @@ let wakeTimer = null;
 let manualDebugEnabled = false; // new: whether manual debug input is visible
 let isProcessingManualCommand = false; // new: whether we're processing a manual command
 // TTS settings - constants extracted from model documentation
-const SUPPORTED_LANGUAGES = [
-    { value: 'Auto', label: '自动检测' },
-    { value: 'Chinese', label: '中文' },
-    { value: 'English', label: '英语' },
-    { value: 'German', label: '德语' },
-    { value: 'Italian', label: '意大利语' },
-    { value: 'Portuguese', label: '葡萄牙语' },
-    { value: 'Spanish', label: '西班牙语' },
-    { value: 'Japanese', label: '日语' },
-    { value: 'Korean', label: '韩语' },
-    { value: 'French', label: '法语' },
-    { value: 'Russian', label: '俄语' }
-];
+// Will be populated from API
+let SUPPORTED_LANGUAGES = [];
 
-const SUPPORTED_VOICES = [
-    // 标准音色
-    { name: '芊悦', value: 'Cherry', description: '阳光积极、亲切自然小姐姐' },
-    { name: '苏瑶', value: 'Serena', description: '温柔小姐姐' },
-    { name: '晨煦', value: 'Ethan', description: '阳光、温暖、活力、朝气' },
-    { name: '千雪', value: 'Chelsie', description: '二次元虚拟女友' },
-    { name: '茉兔', value: 'Momo', description: '撒娇搞怪，逗你开心' },
-    { name: '十三', value: 'Vivian', description: '拽拽的、可爱的小暴躁' },
-    { name: '月白', value: 'Moon', description: '率性帅气的月白' },
-    { name: '四月', value: 'Maia', description: '知性与温柔的碰撞' },
-    { name: '凯', value: 'Kai', description: '耳朵的一场SPA' },
-    { name: '不吃鱼', value: 'Nofish', description: '不会翘舌音的设计师' },
-    { name: '萌宝', value: 'Bella', description: '喝酒不打醉拳的小萝莉' },
-    { name: '詹妮弗', value: 'Jennifer', description: '品牌级、电影质感般美语女声' },
-    { name: '甜茶', value: 'Ryan', description: '节奏拉满，戏感炸裂' },
-    { name: '卡捷琳娜', value: 'Katerina', description: '御姐音色，韵律回味十足' },
-    { name: '艾登', value: 'Aiden', description: '精通厨艺的美语大男孩' },
-    { name: '沧明子', value: 'Eldric Sage', description: '沉稳睿智的老者' },
-    { name: '乖小妹', value: 'Mia', description: '温顺如春水，乖巧如初雪' },
-    { name: '沙小弥', value: 'Mochi', description: '聪明伶俐的小大人' },
-    { name: '燕铮莺', value: 'Bellona', description: '声音洪亮，吐字清晰' },
-    { name: '田叔', value: 'Vincent', description: '独特的沙哑烟嗓' },
-    { name: '萌小姬', value: 'Bunny', description: '萌属性爆棚的小萝莉' },
-    { name: '阿闻', value: 'Neil', description: '专业新闻主持人' },
-    { name: '墨讲师', value: 'Elias', description: '严谨又生动的讲师' },
-    { name: '徐大爷', value: 'Arthur', description: '质朴的老者嗓音' },
-    { name: '邻家妹妹', value: 'Nini', description: '糯米糍一样软黏的嗓音' },
-    { name: '诡婆婆', value: 'Ebona', description: '幽暗神秘的嗓音' },
-    { name: '小婉', value: 'Seren', description: '温和舒缓助眠音' },
-    { name: '顽屁小孩', value: 'Pip', description: '调皮捣蛋的童真' },
-    { name: '少女阿月', value: 'Stella', description: '甜到发腻的迷糊少女' },
-    { name: '博德加', value: 'Bodega', description: '热情的西班牙大叔' },
-    { name: '索尼莎', value: 'Sonrisa', description: '热情开朗的拉美大姐' },
-    { name: '阿列克', value: 'Alek', description: '战斗民族的冷暖' },
-    { name: '多尔切', value: 'Dolce', description: '慵懒的意大利大叔' },
-    { name: '素熙', value: 'Sohee', description: '温柔开朗的韩国欧尼' },
-    { name: '小野杏', value: 'Ono Anna', description: '鬼灵精怪的青梅竹马' },
-    { name: '莱恩', value: 'Lenn', description: '理性叛逆的德国青年' },
-    { name: '埃米尔安', value: 'Emilien', description: '浪漫的法国大哥哥' },
-    { name: '安德雷', value: 'Andre', description: '磁性沉稳男生' },
-    { name: '拉迪奥·戈尔', value: 'Radio Gol', description: '足球诗人' },
-    // 方言音色
-    { name: '上海-阿珍', value: 'Jada', description: '风风火火的沪上阿姐' },
-    { name: '北京-晓东', value: 'Dylan', description: '北京胡同里长大的少年' },
-    { name: '南京-老李', value: 'Li', description: '耐心的瑜伽老师' },
-    { name: '陕西-秦川', value: 'Marcus', description: '面宽话短，心实声沉' },
-    { name: '闽南-阿杰', value: 'Roy', description: '诙谐直爽的台湾哥仔' },
-    { name: '天津-李彼得', value: 'Peter', description: '天津相声，专业捧哏' },
-    { name: '四川-晴儿', value: 'Sunny', description: '甜到心里的川妹子' },
-    { name: '四川-程川', value: 'Eric', description: '跳脱市井的成都男子' },
-    { name: '粤语-阿强', value: 'Rocky', description: '幽默风趣的阿强' },
-    { name: '粤语-阿清', value: 'Kiki', description: '甜美的港妹闺蜜' }
-];
+// Will be populated from API
+let SUPPORTED_VOICES = [];
+
+// Configuration object to store settings from API
+let appConfig = null;
 
 // TTS settings
 let ttsEnabled = false; // whether qwen3-tts-flash is enabled
@@ -102,6 +43,8 @@ let audioChunks = []; // Store audio chunks for qwen3-tts-flash
 let audioSources = []; // Track all audio sources for stopping
 let audioBlobParts = []; // 用于存储音频块，合并后播放
 let isAudioPlaying = false; // 标记是否正在播放合并后的音频
+let currentAudioElement = null; // Track the current Audio element for immediate stop
+let isUserStoppingAudio = false; // 标记是否是用户主动停止音频
 
 // DOM元素 (will be assigned after DOM is ready)
 let statusIndicator;
@@ -113,8 +56,49 @@ let manualWakeupBtn;
 let clearBtn;
 let historyContainer;
 
+// Function to fetch configuration from API
+async function fetchConfig() {
+    try {
+        console.log('Fetching configuration from API...');
+        const response = await fetch('/config');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch config: ${response.status}`);
+        }
+        appConfig = await response.json();
+        
+        // Populate supported languages and voices from API
+        SUPPORTED_LANGUAGES = appConfig.SUPPORTED_LANGUAGES || [];
+        SUPPORTED_VOICES = appConfig.SUPPORTED_VOICES || [];
+        
+        // Update default settings from API
+        if (appConfig.DEFAULT_WAKE_WORD) {
+            wakeWord = appConfig.DEFAULT_WAKE_WORD;
+        }
+        if (appConfig.DEFAULT_WAKE_TIMEOUT) {
+            wakeTimeout = appConfig.DEFAULT_WAKE_TIMEOUT;
+        }
+        
+        console.log('Configuration fetched successfully:', {
+            languages: SUPPORTED_LANGUAGES.length,
+            voices: SUPPORTED_VOICES.length,
+            defaultWakeWord: wakeWord,
+            defaultWakeTimeout: wakeTimeout
+        });
+        
+        return true;
+    } catch (error) {
+        console.error('Error fetching configuration:', error);
+        // Use default values if API fails
+        console.log('Using default configuration values');
+        return false;
+    }
+}
+
 // Single DOM-ready initialization
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Fetch configuration from API first
+    await fetchConfig();
+    
     // assign DOM elements after DOMContentLoaded to avoid nulls
     statusIndicator = document.getElementById('status-indicator');
     statusText = document.getElementById('status-text');
@@ -515,8 +499,8 @@ function setupEventListeners() {
     const voiceControlBtn = document.getElementById('voice-control-btn');
     if (voiceControlBtn) {
         voiceControlBtn.addEventListener('click', function() {
-            // Check if either native speech or streaming is active
-            if (speechSynthesis.speaking || isStreaming || audioSources.length > 0) {
+            // Check if either native speech or streaming or audio is active
+            if (speechSynthesis.speaking || isStreaming || isAudioPlaying || audioSources.length > 0) {
                 // Stop all speech synthesis (native and streaming)
                 stopAllSpeech();
                 this.textContent = '🔊 播放语音';
@@ -679,10 +663,13 @@ function scheduleResetAfterReply() {
         clearTimeout(wakeTimer);
         wakeTimer = null;
     }
-    // short delay to allow user to see the reply
+    // short delay to allow user to see the reply and finish playing audio
     wakeTimer = setTimeout(() => {
-        resetAssistant();
-    }, 800);
+        // 检查是否正在播放语音，如果是则不重置助手
+        if (!speechSynthesis.speaking && !isAudioPlaying && !isStreaming) {
+            resetAssistant();
+        }
+    }, 1500);
 }
 
 // Update processCommand to call scheduleResetAfterReply after updating assistant response
@@ -690,6 +677,9 @@ async function processCommand(command) {
     if (!command) return;
     addToHistory(command, 'user');
     updateAssistantResponse('正在处理您的请求...', false);
+    
+    // 停止语音识别，避免在处理命令期间继续接收语音输入
+    stopListening();
 
     try {
         const resp = await fetch(backendApiUrl, {
@@ -992,9 +982,26 @@ function speakTextNative(text) {
 }
 
 function stopAllSpeech() {
+    // 设置标志，表示是用户主动停止音频
+    isUserStoppingAudio = true;
+    
     // Stop native speech synthesis
     if (speechSynthesis && speechSynthesis.speaking) {
         speechSynthesis.cancel();
+    }
+    
+    // Stop the current Audio element if it exists
+    if (currentAudioElement) {
+        console.log('Stopping current audio element...');
+        try {
+            currentAudioElement.pause();
+            currentAudioElement.src = ''; // 清空音频源，确保立即停止
+        } catch (error) {
+            console.error('Error stopping audio element:', error);
+        } finally {
+            currentAudioElement = null;
+            isAudioPlaying = false;
+        }
     }
     
     // Stop qwen3-tts-flash (both streaming and non-streaming)
@@ -1006,7 +1013,12 @@ function stopAllSpeech() {
         voiceControlBtn.textContent = '🔊 播放语音';
     }
     
-    updateVoiceStatus('语音已停止', 'idle');
+    // 移除停止后的语音提示，只在播放开始和结束时更新状态
+    
+    // 重置标志
+    setTimeout(() => {
+        isUserStoppingAudio = false;
+    }, 100);
 }
 
 // Play complete audio from URL or base64 data
@@ -1020,6 +1032,8 @@ async function playCompleteAudio(audioSource, isBase64 = false) {
     try {
         // 创建并播放音频
         const audio = new Audio();
+        // 保存当前Audio对象，以便在stopAllSpeech中停止
+        currentAudioElement = audio;
         
         // 根据传入的是URL还是base64数据设置音频源
         if (isBase64) {
@@ -1052,16 +1066,27 @@ async function playCompleteAudio(audioSource, isBase64 = false) {
             if (voiceControlBtn) {
                 voiceControlBtn.textContent = '🔊 播放语音';
             }
+            // Reset currentAudioElement to release resources
+            if (currentAudioElement === audio) {
+                currentAudioElement = null;
+            }
         };
         
         audio.onerror = (error) => {
             console.error('Audio playback error:', error);
             isAudioPlaying = false;
-            // 回退到原生TTS
-            const text = document.getElementById('assistant-response').textContent;
-            if (text) {
-                console.log('Falling back to native TTS');
-                speakTextNative(text);
+            // Reset currentAudioElement to release resources
+            if (currentAudioElement === audio) {
+                currentAudioElement = null;
+            }
+            // 只有在不是用户主动停止的情况下才回退到原生TTS
+            if (!isUserStoppingAudio) {
+                // 回退到原生TTS
+                const text = document.getElementById('assistant-response').textContent;
+                if (text) {
+                    console.log('Falling back to native TTS');
+                    speakTextNative(text);
+                }
             }
         };
         
